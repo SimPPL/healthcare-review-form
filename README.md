@@ -1,4 +1,4 @@
-# Medical Expert Evaluation
+# Health Eval Feedback
 
 A Next.js application for evaluating AI responses to medical questions by medical professionals.
 
