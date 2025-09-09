@@ -94,7 +94,7 @@ export default function HomePage() {
                 className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center"
                 style={{ display: "none" }}
               >
-                <span className="text-primary-foreground font-bold">LOGO</span>
+                <span className="text-primary-foreground font-bold text-xs">HEF</span>
               </div>
             </div>
             <CardTitle className="text-2xl font-semibold text-foreground">Health Eval Feedback</CardTitle>

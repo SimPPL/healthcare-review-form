@@ -184,20 +184,16 @@ export default function QuestionsPage() {
               alt="Health Eval Feedback Logo"
               className="w-10 h-10 rounded-lg"
               onError={(e) => {
-                // Try second logo if first fails
-                e.currentTarget.src = "/logo2.png"
-                e.currentTarget.onerror = () => {
-                  // Fallback to placeholder if both logos not found
-                  e.currentTarget.style.display = "none"
-                  e.currentTarget.nextElementSibling.style.display = "flex"
-                }
+                // Fallback to placeholder if logo not found
+                e.currentTarget.style.display = "none"
+                e.currentTarget.nextElementSibling.style.display = "flex"
               }}
             />
             <div
               className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center text-sm"
               style={{ display: "none" }}
             >
-              <span className="text-primary-foreground font-bold">LOGO</span>
+              <span className="text-primary-foreground font-bold text-xs">HEF</span>
             </div>
             <div>
               <h1 className="text-3xl font-bold text-foreground">Clinical Questions</h1>
