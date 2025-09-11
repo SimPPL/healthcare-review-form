@@ -277,7 +277,7 @@ export default function QuestionsPage() {
               <h1 className="text-3xl font-bold text-foreground">
                 Clinical Questions
               </h1>
-              <p className="text-lg text-muted-foreground mt-1">
+              <p className="text-md text-muted-foreground mt-1">
                 Using your expertise, please help answer the questions below,
                 <br />
                 you can choose how many questions you want to answer.
