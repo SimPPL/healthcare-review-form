@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, ArrowRight, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowRight, ArrowLeft, Pencil, X, Check } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import type { UserResponse } from "@/types";
 
 export default function RatingPage() {
@@ -24,6 +25,12 @@ export default function RatingPage() {
   const [error, setError] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
+
+  // New: track editing state and edited answers
+  const [editing, setEditing] = useState<Record<string, boolean>>({});
+  const [editedAnswers, setEditedAnswers] = useState<Record<string, string>>(
+    {},
+  );
 
   useEffect(() => {
     const storedUserId = localStorage.getItem("userId");
@@ -104,6 +111,17 @@ export default function RatingPage() {
   const handleRatingClick = (questionId: string, rating: number) => {
     setRatings((prev) => ({ ...prev, [questionId]: rating }));
     saveRating(questionId, rating);
+  };
+
+  // Save edited answer locally (you could extend this to call an API)
+  const handleSaveEditedAnswer = (questionId: string) => {
+    const updatedAnswer = editedAnswers[questionId];
+    setQuestions((prev) =>
+      prev.map((q) =>
+        q.question_id === questionId ? { ...q, user_answer: updatedAnswer } : q,
+      ),
+    );
+    setEditing((prev) => ({ ...prev, [questionId]: false }));
   };
 
   const proceedToThankYou = () => {
@@ -224,15 +242,77 @@ export default function RatingPage() {
                 <div className="grid md:grid-cols-2 gap-6">
                   {/* Your Answer */}
                   <div className="space-y-2">
-                    <h4 className="font-medium text-foreground flex items-center">
-                      <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                      Your Answer
-                    </h4>
-                    <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                        {question.user_answer}
-                      </p>
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium text-foreground flex items-center">
+                        <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                        Your Answer
+                      </h4>
+                      {!editing[question.question_id] && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditedAnswers((prev) => ({
+                              ...prev,
+                              [question.question_id]:
+                                question.user_answer ?? "",
+                            }));
+                            setEditing((prev) => ({
+                              ...prev,
+                              [question.question_id]: true,
+                            }));
+                          }}
+                        >
+                          <Pencil className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                      )}
                     </div>
+
+                    {editing[question.question_id] ? (
+                      <div className="space-y-2">
+                        <Textarea
+                          value={editedAnswers[question.question_id] || ""}
+                          onChange={(e) =>
+                            setEditedAnswers((prev) => ({
+                              ...prev,
+                              [question.question_id]: e.target.value,
+                            }))
+                          }
+                          className="min-h-[100px]"
+                        />
+                        <div className="flex space-x-2">
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              handleSaveEditedAnswer(question.question_id)
+                            }
+                          >
+                            <Check className="h-4 w-4 mr-1" />
+                            Save
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setEditing((prev) => ({
+                                ...prev,
+                                [question.question_id]: false,
+                              }))
+                            }
+                          >
+                            <X className="h-4 w-4 mr-1" />
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                          {question.user_answer}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* AI Answer */}
