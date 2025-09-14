@@ -1,38 +1,50 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2 } from "lucide-react"
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2 } from "lucide-react";
 
 export default function HomePage() {
-  const router = useRouter()
+  const router = useRouter();
   const [formData, setFormData] = useState({
     name: "",
     profession: "",
     clinicalExperience: "",
     aiExposure: "",
-  })
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState("")
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
 
     if (!formData.name.trim() || !formData.profession.trim()) {
-      setError("Name and medical profession are required")
-      return
+      setError("Name and medical profession are required");
+      return;
     }
 
-    setIsLoading(true)
-    setError("")
+    setIsLoading(true);
+    setError("");
 
     try {
       const response = await fetch("/api/assign-questions", {
@@ -48,31 +60,31 @@ export default function HomePage() {
             aiExposure: formData.aiExposure,
           },
         }),
-      })
+      });
 
-      const data = await response.json()
+      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to assign questions")
+        throw new Error(data.error || "Failed to assign questions");
       }
 
       // Store user ID in localStorage for the session
-      localStorage.setItem("userId", data.userId)
-      localStorage.setItem("userName", formData.name.trim())
+      localStorage.setItem("userId", data.userId);
+      localStorage.setItem("userName", formData.name.trim());
 
       // Navigate to questions page
-      router.push("/questions")
+      router.push("/questions");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred")
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
-    if (error) setError("") // Clear error when user starts typing
-  }
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    if (error) setError(""); // Clear error when user starts typing
+  };
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -86,18 +98,22 @@ export default function HomePage() {
                 className="w-12 h-12 rounded-lg"
                 onError={(e) => {
                   // Fallback to placeholder if logo not found
-                  e.currentTarget.style.display = "none"
-                  e.currentTarget.nextElementSibling.style.display = "flex"
+                  e.currentTarget.style.display = "none";
+                  e.currentTarget.nextElementSibling.style.display = "flex";
                 }}
               />
               <div
                 className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center"
                 style={{ display: "none" }}
               >
-                <span className="text-primary-foreground font-bold text-xs">HEF</span>
+                <span className="text-primary-foreground font-bold text-xs">
+                  HEF
+                </span>
               </div>
             </div>
-            <CardTitle className="text-2xl font-semibold text-foreground">Health Eval Feedback</CardTitle>
+            <CardTitle className="text-2xl font-semibold text-foreground">
+              Health Eval Feedback
+            </CardTitle>
             <CardDescription className="text-muted-foreground">
               Please provide your information to get started
             </CardDescription>
@@ -129,19 +145,26 @@ export default function HomePage() {
                   type="text"
                   placeholder="e.g., Cardiologist, Emergency Medicine, Internal Medicine"
                   value={formData.profession}
-                  onChange={(e) => handleInputChange("profession", e.target.value)}
+                  onChange={(e) =>
+                    handleInputChange("profession", e.target.value)
+                  }
                   className="w-full"
                   disabled={isLoading}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="clinicalExperience" className="text-sm font-medium">
+                <Label
+                  htmlFor="clinicalExperience"
+                  className="text-sm font-medium"
+                >
                   Years of Clinical Experience (Optional)
                 </Label>
                 <Select
                   value={formData.clinicalExperience}
-                  onValueChange={(value) => handleInputChange("clinicalExperience", value)}
+                  onValueChange={(value) =>
+                    handleInputChange("clinicalExperience", value)
+                  }
                   disabled={isLoading}
                 >
                   <SelectTrigger>
@@ -162,7 +185,9 @@ export default function HomePage() {
                 </Label>
                 <Select
                   value={formData.aiExposure}
-                  onValueChange={(value) => handleInputChange("aiExposure", value)}
+                  onValueChange={(value) =>
+                    handleInputChange("aiExposure", value)
+                  }
                   disabled={isLoading}
                 >
                   <SelectTrigger>
@@ -201,5 +226,5 @@ export default function HomePage() {
         </Card>
       </div>
     </div>
-  )
+  );
 }

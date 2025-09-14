@@ -61,22 +61,17 @@ export default function QuestionsPage() {
     try {
       setError("");
       const response = await fetch(`/api/get-assigned?user_id=${userIdParam}`);
-
       if (!response.ok) {
         const data = await response
           .json()
           .catch(() => ({ error: "Network error" }));
         throw new Error(data.error || `Server error: ${response.status}`);
       }
-
       const data = await response.json();
-
       if (!data.questions || !Array.isArray(data.questions)) {
         throw new Error("Invalid response format from server");
       }
-
       setQuestions(data.questions);
-
       const initialAnswers: Record<string, string> = {};
       data.questions.forEach((q: UserResponse) => {
         if (q.user_answer) {
@@ -85,7 +80,6 @@ export default function QuestionsPage() {
       });
       setAnswers(initialAnswers);
     } catch (err) {
-      console.error("[v0] Error:", err);
       const errorMessage =
         err instanceof Error ? err.message : "Failed to load questions";
       setError(errorMessage);
@@ -106,14 +100,8 @@ export default function QuestionsPage() {
     try {
       const response = await fetch("/api/save-answer", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId,
-          questionId,
-          userAnswer: answer.trim(),
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, questionId, userAnswer: answer.trim() }),
       });
 
       if (!response.ok) {
@@ -131,7 +119,6 @@ export default function QuestionsPage() {
         ),
       );
     } catch (err) {
-      console.error("[v0] Error:", err);
       const errorMessage =
         err instanceof Error ? err.message : "Failed to save answer";
       setError(errorMessage);
@@ -148,21 +135,14 @@ export default function QuestionsPage() {
     const answeredQuestions = questions.filter(
       (q) => q.status === "answered" || answers[q.question_id]?.trim(),
     );
-
     if (answeredQuestions.length === 0) {
-      setError(
-        "Please answer at least one question before moving to the rating step.",
-      );
+      setError("Please answer at least one question before proceeding.");
       return;
     }
-
     router.push("/rating");
   };
 
-  const handleBackClick = () => {
-    setShowBackConfirm(true);
-  };
-
+  const handleBackClick = () => setShowBackConfirm(true);
   const confirmBack = () => {
     localStorage.removeItem("userId");
     localStorage.removeItem("userName");
@@ -175,26 +155,21 @@ export default function QuestionsPage() {
   const currentQuestions = questions.slice(startIndex, endIndex);
 
   const goToNextPage = () => {
-    if (currentPage < totalPages - 1) {
-      setCurrentPage(currentPage + 1);
-    }
+    if (currentPage < totalPages - 1) setCurrentPage(currentPage + 1);
   };
 
   const goToPrevPage = () => {
-    if (currentPage > 0) {
-      setCurrentPage(currentPage - 1);
-    }
+    if (currentPage > 0) setCurrentPage(currentPage - 1);
   };
 
   const handleQuestionsPerPageChange = (value: string) => {
-    const newPerPage = Number.parseInt(value);
-    setQuestionsPerPage(newPerPage);
+    setQuestionsPerPage(Number.parseInt(value));
     setCurrentPage(0);
   };
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex items-center justify-center">
         <div className="flex items-center space-x-2">
           <Loader2 className="h-6 w-6 animate-spin" />
           <span>Loading questions...</span>
@@ -203,14 +178,14 @@ export default function QuestionsPage() {
     );
   }
 
-  if (questions.length === 0) {
+  if (questions.length === 0 && !isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="w-full max-w-md text-center shadow-none border">
+      <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md text-center shadow-lg">
           <CardHeader>
             <CardTitle>No Questions Assigned</CardTitle>
             <CardDescription>
-              You don’t have any questions to answer right now.
+              There are no questions for you to answer at this time.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -224,18 +199,18 @@ export default function QuestionsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
       {showBackConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md mx-4 shadow-none border">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md mx-4 shadow-lg">
             <CardHeader>
-              <CardTitle>Go Back?</CardTitle>
+              <CardTitle>Are you sure?</CardTitle>
               <CardDescription>
-                If you return to the main page, your answers will be saved, but
-                you’ll need to enter your details again to continue.
+                Your answers are saved, but you will need to log in again to
+                continue.
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex space-x-2">
+            <CardContent className="flex gap-x-2">
               <Button
                 variant="outline"
                 onClick={() => setShowBackConfirm(false)}
@@ -243,7 +218,10 @@ export default function QuestionsPage() {
               >
                 Stay
               </Button>
-              <Button onClick={confirmBack} className="flex-1">
+              <Button
+                onClick={confirmBack}
+                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
+              >
                 Go Back
               </Button>
             </CardContent>
@@ -253,46 +231,15 @@ export default function QuestionsPage() {
 
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center space-x-4">
-            <img
-              src="/logo.png"
-              alt="Health Eval Feedback Logo"
-              className="w-10 h-10 rounded-lg"
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-                const sibling = e.currentTarget
-                  .nextElementSibling as HTMLElement | null;
-                if (sibling) sibling.style.display = "flex";
-              }}
-            />
-            <div
-              className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center text-sm"
-              style={{ display: "none" }}
-            >
-              <span className="text-primary-foreground font-bold text-xs">
-                HEF
-              </span>
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">
-                Clinical Questions
-              </h1>
-              <p className="text-md text-muted-foreground mt-1">
-                Using your expertise, please help answer the questions below,
-                <br />
-                you can choose how many questions you want to answer.
-              </p>
-            </div>
+          <div>
+            <h1 className="text-3xl font-bold">Clinical Questions</h1>
+            <p className="text-md text-muted-foreground mt-2">
+              Using your expertise, please answer the questions below.
+            </p>
           </div>
-
-          <Button
-            onClick={handleBackClick}
-            variant="outline"
-            size="sm"
-            className="flex items-center space-x-2 bg-transparent shadow-none"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Back</span>
+          <Button onClick={handleBackClick} variant="outline" size="sm">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Home
           </Button>
         </div>
 
@@ -308,7 +255,7 @@ export default function QuestionsPage() {
           </Alert>
         )}
 
-        <div className="flex items-center justify-between mb-6 p-4 bg-muted/30 rounded-lg">
+        <div className="flex items-center justify-between mb-6 p-4 bg-slate-100 dark:bg-zinc-900 rounded-lg">
           <div className="flex items-center space-x-4">
             <span className="text-sm font-medium">Questions per page:</span>
             <Select
@@ -329,28 +276,25 @@ export default function QuestionsPage() {
 
           <div className="flex items-center space-x-4">
             <span className="text-sm text-muted-foreground">
-              Showing {startIndex + 1}-{Math.min(endIndex, questions.length)} of{" "}
+              {startIndex + 1}-{Math.min(endIndex, questions.length)} of{" "}
               {questions.length}
             </span>
             <div className="flex items-center space-x-1">
               <Button
                 variant="outline"
-                size="sm"
+                size="icon"
+                className="h-8 w-8"
                 onClick={goToPrevPage}
                 disabled={currentPage === 0}
-                className="shadow-none"
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <span className="text-sm px-2">
-                {currentPage + 1} / {totalPages}
-              </span>
               <Button
                 variant="outline"
-                size="sm"
+                size="icon"
+                className="h-8 w-8"
                 onClick={goToNextPage}
                 disabled={currentPage >= totalPages - 1}
-                className="shadow-none"
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -358,49 +302,50 @@ export default function QuestionsPage() {
           </div>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-8">
           {currentQuestions.map((question, index) => {
             const globalIndex = startIndex + index;
             return (
               <Card
                 key={question.question_id}
-                className="shadow-none border border-gray-200 bg-gray-50"
+                className="shadow-lg border-t-4 border-purple-500 overflow-hidden"
               >
                 <CardHeader>
                   <div className="flex items-start justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="flex-shrink-0 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium">
+                    <div className="flex items-center space-x-4">
+                      <div className="flex-shrink-0 w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center text-lg font-bold">
                         {globalIndex + 1}
                       </div>
-                      <div className="flex-1">
-                        <CardTitle className="text-lg leading-relaxed text-balance">
-                          {question.question_text}
-                        </CardTitle>
-                      </div>
+                      <CardTitle className="text-xl leading-relaxed">
+                        {question.question_text}
+                      </CardTitle>
                     </div>
                     <Badge
                       variant={
                         question.status === "answered" ? "default" : "secondary"
                       }
-                      className="ml-2"
                     >
                       {question.status === "answered" ? "Answered" : "Pending"}
                     </Badge>
                   </div>
                 </CardHeader>
 
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-4 p-6">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">
-                      Your answer:
+                    <label
+                      htmlFor={`answer-${question.question_id}`}
+                      className="text-sm font-medium text-foreground"
+                    >
+                      Your Expert Answer:
                     </label>
                     <Textarea
+                      id={`answer-${question.question_id}`}
                       placeholder="Type your response here..."
                       value={answers[question.question_id] || ""}
                       onChange={(e) =>
                         handleAnswerChange(question.question_id, e.target.value)
                       }
-                      className="min-h-[120px] resize-none shadow-none border border-gray-200 bg-white focus-visible:ring-0 focus-visible:outline-none"
+                      className="min-h-[150px] resize-y bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-purple-400"
                     />
                   </div>
 
@@ -416,9 +361,7 @@ export default function QuestionsPage() {
                         !answers[question.question_id]?.trim() ||
                         isSaving[question.question_id]
                       }
-                      size="sm"
-                      variant="outline"
-                      className="shadow-none"
+                      className="bg-purple-600 hover:bg-purple-700 text-white"
                     >
                       {isSaving[question.question_id] ? (
                         <>
@@ -439,10 +382,10 @@ export default function QuestionsPage() {
           })}
         </div>
 
-        <div className="mt-8 flex justify-center">
+        <div className="mt-10 flex justify-center">
           <Button
             onClick={proceedToRating}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-none"
+            className="bg-purple-600 hover:bg-purple-700 text-white"
             size="lg"
           >
             Proceed to Rating

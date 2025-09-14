@@ -3,18 +3,30 @@ import { dynamoDb, DATASET_TABLE, RESPONSES_TABLE } from "@/lib/dynamo";
 import { ScanCommand, UpdateCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { v4 as uuidv4 } from "uuid";
 
-// Define types for your data
 type QuestionItem = {
   question_id: string;
   question_text: string;
   llm_response: string;
-  times_answered?: number;
+  answer?: string;
+  answer_hindi?: string;
+  answer_marathi?: string;
+  axis_scores?: Record<string, number>; // e.g., { Accuracy: 0.9, Completeness: 0.8 }
+  classification?: string;
+  medical_quality_score?: number;
+  references?: string[];
+  rubric_scores?: Record<string, number>; // rubric_name -> score
+  rubrics?: string[];
   target_evaluations?: number;
+  theme?: string;
+  times_answered?: number;
 };
 
 type QuestionAssignment = {
   question_text: string;
   llm_response: string;
+  answer?: string;
+  answer_hindi?: string;
+  answer_marathi?: string;
   status: string;
   assigned_at: string;
 };
@@ -26,7 +38,7 @@ type UserResponseItem = {
   clinical_experience: string;
   ai_exposure: string;
   questions: Record<string, QuestionAssignment>;
-  answers: Record<string, unknown>;
+  answers: Record<string, Partial<QuestionItem>>; // now includes extra fields
   ratings: Record<string, unknown>;
   created_at: string;
   updated_at: string;

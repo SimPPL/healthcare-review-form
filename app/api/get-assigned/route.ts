@@ -1,53 +1,105 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { dynamoDb, RESPONSES_TABLE } from "@/lib/dynamo"
-import { GetCommand } from "@aws-sdk/lib-dynamodb"
+import { type NextRequest, NextResponse } from "next/server";
+import { dynamoDb, RESPONSES_TABLE, DATASET_TABLE } from "@/lib/dynamo";
+import { GetCommand } from "@aws-sdk/lib-dynamodb";
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const userId = searchParams.get("user_id")
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("user_id");
 
     if (!userId) {
-      return NextResponse.json({ error: "User ID is required" }, { status: 400 })
+      console.error("GET /api/get-assigned: Missing user_id");
+      return NextResponse.json(
+        { error: "User ID is required" },
+        { status: 400 },
+      );
     }
 
-    const getCommand = new GetCommand({
-      TableName: RESPONSES_TABLE,
-      Key: {
-        user_id: userId,
-      },
-    })
+    console.log(`Fetching assigned questions for user_id: ${userId}`);
 
-    const result = await dynamoDb.send(getCommand)
-
-    if (!result.Item) {
-      return NextResponse.json({ questions: [] })
+    // Fetch user response record
+    let userResult;
+    try {
+      const userCommand = new GetCommand({
+        TableName: RESPONSES_TABLE,
+        Key: { user_id: userId },
+      });
+      userResult = await dynamoDb.send(userCommand);
+    } catch (err) {
+      console.error("Failed to fetch user record from RESPONSES_TABLE:", err);
+      return NextResponse.json(
+        { error: "Failed to fetch user record" },
+        { status: 500 },
+      );
     }
 
-    const userRecord = result.Item
-    const questions = []
+    if (!userResult.Item) {
+      console.warn(`No response record found for user_id: ${userId}`);
+      return NextResponse.json({ questions: [] }, { status: 200 });
+    }
 
-    if (userRecord.questions) {
-      for (const [questionId, questionData] of Object.entries(userRecord.questions)) {
+    const userRecord = userResult.Item;
+    const questions: any[] = [];
+
+    if (!userRecord.questions) {
+      console.warn(
+        `User record has no questions: ${JSON.stringify(userRecord)}`,
+      );
+    } else {
+      for (const [questionId, questionData] of Object.entries(
+        userRecord.questions,
+      )) {
+        let rubrics: string[] = [];
+
+        try {
+          const datasetResult = await dynamoDb.send(
+            new GetCommand({
+              TableName: DATASET_TABLE,
+              Key: { question_id: questionId },
+              ProjectionExpression: "rubrics",
+            }),
+          );
+
+          if (datasetResult.Item?.rubrics) {
+            rubrics = Array.isArray(datasetResult.Item.rubrics)
+              ? datasetResult.Item.rubrics
+              : JSON.parse(datasetResult.Item.rubrics);
+          }
+        } catch (err) {
+          console.error(
+            `Failed to fetch rubrics for question ${questionId}:`,
+            err,
+          );
+        }
+
+        const userAnswer = userRecord.answers?.[questionId]?.user_answer || "";
+
+        if (!userAnswer) {
+          console.log(`Question ${questionId} has no user answer yet`);
+        }
+
         questions.push({
           question_id: questionId,
           question_text: questionData.question_text,
           llm_response: questionData.llm_response,
-          status: questionData.status,
-          user_answer: userRecord.answers?.[questionId]?.user_answer || "",
+          status: questionData.status || "pending",
+          user_answer: userAnswer,
           rating: userRecord.ratings?.[questionId] || null,
-        })
+          rubrics,
+          rubric_scores: questionData.rubric_scores || {},
+          axis_scores: questionData.axis_scores || {},
+          classification: questionData.classification || "",
+        });
       }
     }
 
-    return NextResponse.json({ questions })
+    console.log(`Returning ${questions.length} questions for user ${userId}`);
+    return NextResponse.json({ questions });
   } catch (error) {
-    console.error("Error fetching assigned questions:", error)
+    console.error("Unhandled error in GET /api/get-assigned:", error);
     return NextResponse.json(
-      {
-        error: "Internal server error",
-      },
+      { error: "Internal server error" },
       { status: 500 },
-    )
+    );
   }
 }
