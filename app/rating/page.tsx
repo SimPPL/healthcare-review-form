@@ -56,10 +56,24 @@ export default function RatingPage() {
       const answeredQuestions = data.questions.filter(
         (q: UserResponse) => q.user_answer && q.user_answer.trim(),
       );
-      setQuestions(answeredQuestions);
+
+      // Process questions and add ratings from localStorage
+      const processedQuestions = answeredQuestions.map((q: UserResponse) => {
+        const storedRating = localStorage.getItem(`rating_${q.question_id}`);
+        if (storedRating) {
+          return {
+            ...q,
+            llm_rating: parseInt(storedRating, 10),
+            status: "submitted" as const,
+          };
+        }
+        return q;
+      });
+
+      setQuestions(processedQuestions);
 
       const initialRatings: Record<string, number> = {};
-      answeredQuestions.forEach((q: UserResponse) => {
+      processedQuestions.forEach((q: UserResponse) => {
         if (q.llm_rating !== undefined && q.llm_rating !== null) {
           initialRatings[q.question_id] = q.llm_rating;
         }
@@ -73,22 +87,13 @@ export default function RatingPage() {
   };
 
   const saveRating = async (questionId: string, rating: number) => {
-    if (!userId) return;
-
     setIsSaving((prev) => ({ ...prev, [questionId]: true }));
 
     try {
-      const response = await fetch("/api/save-rating", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, questionId, llmRating: rating }),
-      });
+      // Save rating to localStorage instead of making API call
+      localStorage.setItem(`rating_${questionId}`, rating.toString());
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to save rating");
-      }
-
+      // Update UI state
       setQuestions((prev) =>
         prev.map((q) =>
           q.question_id === questionId
@@ -126,6 +131,12 @@ export default function RatingPage() {
       setError("Please rate at least one AI answer before continuing.");
       return;
     }
+
+    // Save all current ratings to localStorage before proceeding
+    Object.entries(ratings).forEach(([questionId, rating]) => {
+      localStorage.setItem(`rating_${questionId}`, rating.toString());
+    });
+
     router.push("/classification");
   };
 
@@ -203,12 +214,12 @@ export default function RatingPage() {
           {questions.map((question, index) => (
             <Card
               key={question.question_id}
-              className="shadow-lg border-t-4 border-purple-500 overflow-hidden"
+              className="shadow-lg border-t-4 border-[var(--color-purple-muted-border)] overflow-hidden"
             >
               <CardHeader>
                 <div className="flex items-start justify-between">
                   <div className="flex items-center space-x-4">
-                    <div className="flex-shrink-0 w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center text-lg font-bold">
+                    <div className="flex-shrink-0 w-10 h-10 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-lg font-bold">
                       {index + 1}
                     </div>
                     <CardTitle className="text-xl leading-relaxed">
@@ -310,7 +321,7 @@ export default function RatingPage() {
                     <h4 className="font-semibold text-foreground flex items-center text-md">
                       AI's Answer
                     </h4>
-                    <div className="bg-purple-50 dark:bg-purple-950/20 p-4 rounded-lg border border-purple-200 dark:border-purple-800">
+                    <div className="bg-[#f8f5ff] dark:bg-[var(--color-purple-muted-dark)]/10 p-4 rounded-lg border border-[var(--color-purple-muted-border)] dark:border-[var(--color-purple-muted-dark-border)]">
                       <p className="text-sm leading-relaxed">
                         {question.llm_response}
                       </p>
@@ -338,7 +349,7 @@ export default function RatingPage() {
                             disabled={isSaving[question.question_id]}
                             className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full text-sm font-bold transition-all duration-200 flex items-center justify-center ${
                               ratings[question.question_id] === rating
-                                ? "bg-purple-600 text-white scale-110 shadow-lg"
+                                ? "bg-[var(--color-purple-muted)] text-white scale-110 shadow-lg"
                                 : "bg-slate-200 dark:bg-zinc-700 hover:bg-slate-300 dark:hover:bg-zinc-600 text-slate-600 dark:text-zinc-300"
                             } ${isSaving[question.question_id] ? "opacity-50 cursor-not-allowed" : ""}`}
                           >
@@ -370,7 +381,7 @@ export default function RatingPage() {
 
           <Button
             onClick={proceedToClassification}
-            className="bg-purple-600 hover:bg-purple-700 text-white"
+            className="bg-[var(--color-purple-muted)] hover:bg-[var(--color-purple-muted-hover)] text-white"
             size="lg"
           >
             Continue to Classification

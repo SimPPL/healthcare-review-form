@@ -71,9 +71,23 @@ export default function QuestionsPage() {
       if (!data.questions || !Array.isArray(data.questions)) {
         throw new Error("Invalid response format from server");
       }
-      setQuestions(data.questions);
+
+      // Process questions and check localStorage for saved answers
+      const updatedQuestions = data.questions.map((q: UserResponse) => {
+        const storedAnswer = localStorage.getItem(`answer_${q.question_id}`);
+        if (storedAnswer) {
+          return {
+            ...q,
+            user_answer: storedAnswer,
+            status: "answered" as const,
+          };
+        }
+        return q;
+      });
+
+      setQuestions(updatedQuestions);
       const initialAnswers: Record<string, string> = {};
-      data.questions.forEach((q: UserResponse) => {
+      updatedQuestions.forEach((q: UserResponse) => {
         if (q.user_answer) {
           initialAnswers[q.question_id] = q.user_answer;
         }
@@ -89,7 +103,7 @@ export default function QuestionsPage() {
   };
 
   const saveAnswer = async (questionId: string, answer: string) => {
-    if (!userId || !answer.trim()) {
+    if (!answer.trim()) {
       setError("Please provide an answer before saving");
       return;
     }
@@ -98,19 +112,10 @@ export default function QuestionsPage() {
     setError("");
 
     try {
-      const response = await fetch("/api/save-answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, questionId, userAnswer: answer.trim() }),
-      });
+      // Save answer to localStorage instead of making API call
+      localStorage.setItem(`answer_${questionId}`, answer.trim());
 
-      if (!response.ok) {
-        const data = await response
-          .json()
-          .catch(() => ({ error: "Network error" }));
-        throw new Error(data.error || `Failed to save: ${response.status}`);
-      }
-
+      // Update UI state
       setQuestions((prev) =>
         prev.map((q) =>
           q.question_id === questionId
@@ -139,13 +144,22 @@ export default function QuestionsPage() {
       setError("Please answer at least one question before proceeding.");
       return;
     }
+
+    // Save all current answers to localStorage before proceeding
+    questions.forEach((q) => {
+      const answer = answers[q.question_id];
+      if (answer?.trim()) {
+        localStorage.setItem(`answer_${q.question_id}`, answer.trim());
+      }
+    });
+
     router.push("/rating");
   };
 
   const handleBackClick = () => setShowBackConfirm(true);
   const confirmBack = () => {
-    localStorage.removeItem("userId");
-    localStorage.removeItem("userName");
+    // Clear all localStorage items
+    localStorage.clear();
     router.push("/");
   };
 
@@ -220,7 +234,7 @@ export default function QuestionsPage() {
               </Button>
               <Button
                 onClick={confirmBack}
-                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
+                className="flex-1 bg-[var(--color-purple-muted)] hover:bg-[var(--color-purple-muted-hover)] text-white"
               >
                 Go Back
               </Button>
@@ -308,12 +322,12 @@ export default function QuestionsPage() {
             return (
               <Card
                 key={question.question_id}
-                className="shadow-lg border-t-4 border-purple-500 overflow-hidden"
+                className="shadow-lg border-t-4 border-[var(--color-purple-muted-border)] overflow-hidden"
               >
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center space-x-4">
-                      <div className="flex-shrink-0 w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center text-lg font-bold">
+                      <div className="flex-shrink-0 w-10 h-10 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-lg font-bold">
                         {globalIndex + 1}
                       </div>
                       <CardTitle className="text-xl leading-relaxed">
@@ -345,7 +359,7 @@ export default function QuestionsPage() {
                       onChange={(e) =>
                         handleAnswerChange(question.question_id, e.target.value)
                       }
-                      className="min-h-[150px] resize-y bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-purple-400"
+                      className="min-h-[150px] resize-y bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-[var(--color-purple-muted-border)]"
                     />
                   </div>
 
@@ -361,7 +375,7 @@ export default function QuestionsPage() {
                         !answers[question.question_id]?.trim() ||
                         isSaving[question.question_id]
                       }
-                      className="bg-purple-600 hover:bg-purple-700 text-white"
+                      className="bg-[var(--color-purple-muted)] hover:bg-[var(--color-purple-muted-hover)] text-white"
                     >
                       {isSaving[question.question_id] ? (
                         <>
@@ -385,7 +399,7 @@ export default function QuestionsPage() {
         <div className="mt-10 flex justify-center">
           <Button
             onClick={proceedToRating}
-            className="bg-purple-600 hover:bg-purple-700 text-white"
+            className="bg-[var(--color-purple-muted)] hover:bg-[var(--color-purple-muted-hover)] text-white"
             size="lg"
           >
             Proceed to Rating

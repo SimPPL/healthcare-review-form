@@ -78,7 +78,7 @@ function CategoryDropzone({
       ref={setNodeRef}
       className={`border-2 rounded-xl p-4 transition-all duration-200 min-h-[150px] flex flex-col ${
         isOver
-          ? "bg-purple-50 border-purple-400 border-dashed"
+          ? "bg-[#f8f5ff] border-[var(--color-purple-muted-border)] border-dashed"
           : "bg-slate-50 dark:bg-zinc-900/50 border-transparent"
       }`}
     >
@@ -108,7 +108,7 @@ export default function ClassificationPage() {
     Record<string, Record<string, string>>
   >({});
   const [editing, setEditing] = useState<
-    Record<string, { original: string; current: string }>
+    Record<string, { original: string; current: string } | null>
   >({});
   const [feedback, setFeedback] = useState<Record<string, string>>({});
   const [expandedText, setExpandedText] = useState<
@@ -207,7 +207,7 @@ export default function ClassificationPage() {
   };
 
   const cancelEdit = (questionId: string) => {
-    setEditing({ [questionId]: null });
+    setEditing((prev) => ({ ...prev, [questionId]: null }));
   };
 
   const saveEditedQuality = (questionId: string) => {
@@ -266,7 +266,71 @@ export default function ClassificationPage() {
   };
 
   const handleSubmit = async () => {
-    // ... (No changes here)
+    if (!userId) {
+      setError("User ID not found. Please log in again.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError("");
+
+    try {
+      // Create an object to hold user answers
+      const userAnswers: Record<
+        string,
+        {
+          user_answer: string;
+          status: string;
+          answered_at: string;
+        }
+      > = {};
+
+      // Create an object to hold ratings
+      const userRatings: Record<string, number> = {};
+
+      // Collect answers and ratings from the questions state
+      questions.forEach((q) => {
+        if (q.user_answer) {
+          userAnswers[q.question_id] = {
+            user_answer: q.user_answer,
+            status: "answered",
+            answered_at: new Date().toISOString(),
+          };
+        }
+
+        if (q.llm_rating !== undefined && q.llm_rating !== null) {
+          userRatings[q.question_id] = q.llm_rating;
+        }
+      });
+
+      // Save all data at once
+      const response = await fetch("/api/save-rubric-choices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          answers: userAnswers,
+          ratings: userRatings,
+          selectedQualities,
+          qualityCategories,
+          editedQualities: Object.entries(editing)
+            .filter(([_, value]) => value !== null)
+            .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {}),
+          feedback,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to save data");
+      }
+
+      // Navigate to thank you page
+      router.push("/thank-you");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save data");
+      setIsSubmitting(false);
+    }
   };
 
   const sensors = useSensors(useSensor(PointerSensor));
@@ -318,12 +382,12 @@ export default function ClassificationPage() {
             return (
               <Card
                 key={question.question_id}
-                className="shadow-lg border-t-4 border-purple-500 overflow-hidden"
+                className="shadow-lg border-t-4 border-[var(--color-purple-muted-border)] overflow-hidden"
               >
                 <CardHeader>
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-center space-x-4">
-                      <div className="flex-shrink-0 w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center text-lg font-bold">
+                      <div className="flex-shrink-0 w-10 h-10 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-lg font-bold">
                         {index + 1}
                       </div>
                       {/* CHANGE 2: RESTORED SHOW MORE/LESS FOR QUESTION */}
@@ -335,7 +399,7 @@ export default function ClassificationPage() {
                           <Button
                             variant="link"
                             size="sm"
-                            className="p-1 h-auto text-purple-600"
+                            className="p-1 h-auto text-[var(--color-purple-muted)]"
                             onClick={() =>
                               toggleTextExpansion(
                                 question.question_id,
@@ -399,7 +463,7 @@ export default function ClassificationPage() {
                       <h4 className="font-semibold text-foreground flex items-center text-md">
                         AI Answer
                       </h4>
-                      <div className="bg-purple-50 dark:bg-purple-950/20 p-4 rounded-lg border border-purple-200 dark:border-purple-800">
+                      <div className="bg-[#f8f5ff] dark:bg-[var(--color-purple-muted-dark)]/10 p-4 rounded-lg border border-[var(--color-purple-muted-border)] dark:border-[var(--color-purple-muted-dark-border)]">
                         <p className="text-sm leading-relaxed whitespace-pre-wrap">
                           {expandedText[question.question_id]?.aiAnswer
                             ? question.llm_response
@@ -408,7 +472,7 @@ export default function ClassificationPage() {
                             <Button
                               variant="link"
                               size="sm"
-                              className="p-1 h-auto text-purple-600"
+                              className="p-1 h-auto text-[var(--color-purple-muted)]"
                               onClick={() =>
                                 toggleTextExpansion(
                                   question.question_id,
@@ -430,7 +494,7 @@ export default function ClassificationPage() {
                     <div className="space-y-4">
                       <div className="text-center lg:text-left">
                         <h2 className="text-lg font-semibold flex items-center gap-2">
-                          <ListChecks className="text-purple-500" />
+                          <ListChecks className="text-[var(--color-purple-muted)]" />
                           Step 1: Select & Refine Qualities
                         </h2>
                         <p className="text-sm text-muted-foreground mt-1">
@@ -449,7 +513,7 @@ export default function ClassificationPage() {
                           return (
                             <div
                               key={quality}
-                              className={`flex items-center space-x-3 p-3 rounded-lg transition-colors ${isSelected ? "bg-purple-50 dark:bg-purple-950/40" : "hover:bg-slate-50 dark:hover:bg-zinc-800/50"}`}
+                              className={`flex items-center space-x-3 p-3 rounded-lg transition-colors ${isSelected ? "bg-[#f8f5ff] dark:bg-[var(--color-purple-muted-dark)]/20" : "hover:bg-slate-50 dark:hover:bg-zinc-800/50"}`}
                             >
                               {isCurrentlyEditing ? (
                                 <div className="flex-1 flex items-center gap-2">
@@ -459,12 +523,13 @@ export default function ClassificationPage() {
                                       ""
                                     }
                                     onChange={(e) =>
-                                      setEditing({
+                                      setEditing((prev) => ({
+                                        ...prev,
                                         [question.question_id]: {
-                                          ...editing[question.question_id]!,
+                                          ...prev[question.question_id]!,
                                           current: e.target.value,
                                         },
-                                      })
+                                      }))
                                     }
                                     className="h-8"
                                   />
@@ -500,7 +565,7 @@ export default function ClassificationPage() {
                                         quality,
                                       )
                                     }
-                                    className="h-5 w-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                    className="h-5 w-5 rounded border-gray-300 text-[var(--color-purple-muted)] focus:ring-[var(--color-purple-muted-border)]"
                                   />
                                   <label
                                     htmlFor={`${question.question_id}-${idx}`}
@@ -532,7 +597,7 @@ export default function ClassificationPage() {
                     <div className="space-y-4">
                       <div className="text-center lg:text-left">
                         <h2 className="text-lg font-semibold flex items-center gap-2">
-                          <ArrowDownUp className="text-purple-500" />
+                          <ArrowDownUp className="text-[var(--color-purple-muted)]" />
                           Step 2: Classify Qualities
                         </h2>
                         <p className="text-sm text-muted-foreground mt-1">

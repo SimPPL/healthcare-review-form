@@ -20,6 +20,8 @@ export async function POST(request: NextRequest) {
       qualityCategories,
       editedQualities,
       feedback,
+      answers,
+      ratings,
     } = body;
 
     if (!userId) {
@@ -36,29 +38,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Build the update expression based on what data is provided
+    let updateExpression =
+      "SET classification_data = :classificationData, #s = :status, updated_at = :updatedAt";
+    const expressionAttributeNames = {
+      "#s": "status", // alias reserved keyword
+    };
+    const expressionAttributeValues: Record<string, any> = {
+      ":classificationData": {
+        selectedQualities: selectedQualities,
+        qualityCategories: qualityCategories || {},
+        editedQualities: editedQualities || {},
+        feedback: feedback || {},
+        completed_at: new Date().toISOString(),
+      },
+      ":status": "classification_completed",
+      ":updatedAt": new Date().toISOString(),
+    };
+
+    // Add answers if provided
+    if (answers && Object.keys(answers).length > 0) {
+      updateExpression += ", answers = :answers";
+      expressionAttributeValues[":answers"] = answers;
+    }
+
+    // Add ratings if provided
+    if (ratings && Object.keys(ratings).length > 0) {
+      updateExpression += ", ratings = :ratings";
+      expressionAttributeValues[":ratings"] = ratings;
+    }
+
     const updateCommand = new UpdateCommand({
       TableName: RESPONSES_TABLE,
       Key: { user_id: userId },
-      UpdateExpression: `
-        SET
-          classification_data = :classificationData,
-          #s = :status,
-          updated_at = :updatedAt
-      `,
-      ExpressionAttributeNames: {
-        "#s": "status", // alias reserved keyword
-      },
-      ExpressionAttributeValues: {
-        ":classificationData": {
-          selected_qualities: selectedQualities,
-          quality_categories: qualityCategories || {},
-          edited_qualities: editedQualities || {},
-          feedback: feedback || {},
-          completed_at: new Date().toISOString(),
-        },
-        ":status": "classification_completed",
-        ":updatedAt": new Date().toISOString(),
-      },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: expressionAttributeValues,
     });
 
     await dynamoDb.send(updateCommand);
@@ -73,14 +88,23 @@ export async function POST(request: NextRequest) {
       Object.keys(qualityCategories || {}).length,
     );
 
+    if (answers) {
+      console.log("Answers saved:", Object.keys(answers).length);
+    }
+    if (ratings) {
+      console.log("Ratings saved:", Object.keys(ratings).length);
+    }
+
     return NextResponse.json({
       message: "Classification data saved successfully",
       summary: {
         questionsProcessed: Object.keys(selectedQualities).length,
         totalQualitiesSelected: Object.values(selectedQualities).reduce(
-          (sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0),
+          (sum: number, arr) => sum + (Array.isArray(arr) ? arr.length : 0),
           0,
         ),
+        answersProcessed: answers ? Object.keys(answers).length : 0,
+        ratingsProcessed: ratings ? Object.keys(ratings).length : 0,
       },
     });
   } catch (error) {
