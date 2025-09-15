@@ -29,6 +29,8 @@ export default function HomePage() {
   const [formData, setFormData] = useState({
     name: "",
     profession: "",
+    email: "",
+    phone: "",
     clinicalExperience: "",
     aiExposure: "",
   });
@@ -38,8 +40,19 @@ export default function HomePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.name.trim() || !formData.profession.trim()) {
-      setError("Name and medical profession are required");
+    if (
+      !formData.name.trim() ||
+      !formData.profession.trim() ||
+      !formData.email.trim()
+    ) {
+      setError("Name, medical profession, and email are required");
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email.trim())) {
+      setError("Please enter a valid email address");
       return;
     }
 
@@ -56,6 +69,8 @@ export default function HomePage() {
           userInfo: {
             name: formData.name.trim(),
             profession: formData.profession.trim(),
+            email: formData.email.trim(),
+            phone: formData.phone.trim(),
             clinicalExperience: formData.clinicalExperience,
             aiExposure: formData.aiExposure,
           },
@@ -88,14 +103,14 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-md mx-auto">
         <Card className="shadow-lg">
-          <CardHeader className="text-center space-y-2">
+          <CardHeader className="text-center space-y-2 px-4 sm:px-6">
             <div className="flex items-center justify-center mb-4">
               <img
                 src="/logo.png"
                 alt="Health Eval Feedback Logo"
-                className="w-12 h-12 rounded-lg"
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg"
                 onError={(e) => {
                   // Fallback to placeholder if logo not found
                   e.currentTarget.style.display = "none";
@@ -103,7 +118,7 @@ export default function HomePage() {
                 }}
               />
               <div
-                className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center"
+                className="w-10 h-10 sm:w-12 sm:h-12 bg-primary rounded-lg flex items-center justify-center"
                 style={{ display: "none" }}
               >
                 <span className="text-primary-foreground font-bold text-xs">
@@ -111,15 +126,15 @@ export default function HomePage() {
                 </span>
               </div>
             </div>
-            <CardTitle className="text-2xl font-semibold text-foreground">
+            <CardTitle className="text-xl sm:text-2xl font-semibold text-foreground">
               Health Eval Feedback
             </CardTitle>
-            <CardDescription className="text-muted-foreground">
+            <CardDescription className="text-muted-foreground text-sm">
               Please provide your information to get started
             </CardDescription>
           </CardHeader>
 
-          <CardContent>
+          <CardContent className="px-4 sm:px-6">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="name" className="text-sm font-medium">
@@ -131,6 +146,36 @@ export default function HomePage() {
                   placeholder="Enter your full name"
                   value={formData.name}
                   onChange={(e) => handleInputChange("name", e.target.value)}
+                  className="w-full"
+                  disabled={isLoading}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-sm font-medium">
+                  Email <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="Enter your email address"
+                  value={formData.email}
+                  onChange={(e) => handleInputChange("email", e.target.value)}
+                  className="w-full"
+                  disabled={isLoading}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="phone" className="text-sm font-medium">
+                  Phone Number (Optional)
+                </Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="Enter your phone number"
+                  value={formData.phone}
+                  onChange={(e) => handleInputChange("phone", e.target.value)}
                   className="w-full"
                   disabled={isLoading}
                 />
@@ -209,18 +254,23 @@ export default function HomePage() {
 
               <Button
                 type="submit"
-                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground text-sm sm:text-base"
                 disabled={isLoading}
               >
                 {isLoading ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
                     Assigning Questions...
                   </>
                 ) : (
                   "Continue to Questions"
                 )}
               </Button>
+
+              <p className="text-xs text-muted-foreground text-center mt-4 px-2">
+                Your personal data will only be used to send you your responses
+                and will not be used for any other purpose.
+              </p>
             </form>
           </CardContent>
         </Card>

@@ -29,6 +29,8 @@ export interface UserResponse {
   user_name: string;
   user_profession: string;
   user_extra_info?: string;
+  email: string;
+  phone?: string;
   clinical_experience?: string;
   ai_exposure?: string;
 
@@ -79,6 +81,8 @@ export interface UserResponseRecord {
   user_id: string;
   user_name: string;
   user_profession: string;
+  email: string;
+  phone?: string;
   clinical_experience?: string;
   ai_exposure?: string;
 
@@ -114,6 +118,8 @@ export interface UserResponseRecord {
 export interface UserInfo {
   name: string;
   profession: string;
+  email: string;
+  phone?: string;
   clinicalExperience?: string;
   aiExposure?: string;
   extraInfo?: string;

@@ -35,6 +35,8 @@ type UserResponseItem = {
   user_id: string;
   user_name: string;
   user_profession: string;
+  email: string;
+  phone?: string;
   clinical_experience: string;
   ai_exposure: string;
   questions: Record<string, QuestionAssignment>;
@@ -64,11 +66,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, profession, clinicalExperience, aiExposure } = userInfo;
+    const { name, profession, email, phone, clinicalExperience, aiExposure } =
+      userInfo;
 
-    if (!name || !profession) {
+    if (!name || !profession || !email) {
       return NextResponse.json(
-        { error: "Name and profession are required" },
+        { error: "Name, profession, and email are required" },
         { status: 400 },
       );
     }
@@ -197,6 +200,8 @@ export async function POST(request: NextRequest) {
         user_id: userId,
         user_name: name,
         user_profession: profession,
+        email: email,
+        phone: phone || "",
         clinical_experience: clinicalExperience || "",
         ai_exposure: aiExposure || "",
         questions: questionsMap,

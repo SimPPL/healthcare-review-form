@@ -49,13 +49,12 @@ function DraggableQuality({
   return (
     <div
       ref={setNodeRef}
-      style={style}
-      {...attributes}
       {...listeners}
-      className="p-3 bg-white dark:bg-zinc-800 rounded-lg shadow-md border flex items-center gap-3 cursor-grab active:cursor-grabbing"
+      {...attributes}
+      className="mb-1 p-1.5 sm:p-2 bg-white dark:bg-zinc-800 border rounded-lg shadow-sm cursor-grab text-xs sm:text-sm"
+      style={style}
     >
-      <GripVertical className="h-5 w-5 text-muted-foreground" />
-      <span className="flex-1 text-sm">{children}</span>
+      {children}
     </div>
   );
 }
@@ -76,16 +75,14 @@ function CategoryDropzone({
   return (
     <div
       ref={setNodeRef}
-      className={`border-2 rounded-xl p-4 transition-all duration-200 min-h-[150px] flex flex-col ${
+      className={`border-2 rounded-xl p-2 sm:p-3 md:p-4 transition-all duration-200 min-h-[100px] sm:min-h-[120px] md:min-h-[150px] flex flex-col ${
         isOver
           ? "bg-[#f8f5ff] border-[var(--color-purple-muted-border)] border-dashed"
           : "bg-slate-50 dark:bg-zinc-900/50 border-transparent"
       }`}
     >
-      <h4 className="font-semibold text-sm mb-3 text-zinc-600 dark:text-zinc-300">
-        {title}
-      </h4>
-      <div className="flex-1 space-y-2">{children}</div>
+      <h3 className="font-semibold text-xs sm:text-sm mb-1 sm:mb-2">{title}</h3>
+      <div className="flex-1">{children}</div>
     </div>
   );
 }
@@ -151,9 +148,25 @@ export default function ClassificationPage() {
       if (!response.ok || !data.questions || !Array.isArray(data.questions)) {
         throw new Error(data.error || "Invalid API response");
       }
-      const answeredQuestions = data.questions.filter((q: UserResponse) =>
+
+      // First, enhance questions with answers from localStorage
+      let enhancedQuestions = [...data.questions].map((q: UserResponse) => {
+        const storedAnswer = localStorage.getItem(`answer_${q.question_id}`);
+        if (storedAnswer && storedAnswer.trim()) {
+          return {
+            ...q,
+            user_answer: storedAnswer.trim(),
+            status: "answered" as const,
+          };
+        }
+        return q;
+      });
+
+      // Then filter to get only answered questions
+      const answeredQuestions = enhancedQuestions.filter((q: UserResponse) =>
         q.user_answer?.trim(),
       );
+
       setQuestions(answeredQuestions);
       const initialSelected: Record<string, string[]> = {};
       const initialCategories: Record<string, Record<string, string>> = {};
@@ -288,9 +301,17 @@ export default function ClassificationPage() {
       // Create an object to hold ratings
       const userRatings: Record<string, number> = {};
 
-      // Collect answers and ratings from the questions state
+      // Collect answers from questions state and localStorage
       questions.forEach((q) => {
-        if (q.user_answer) {
+        // First check localStorage for the most recent answer
+        const storedAnswer = localStorage.getItem(`answer_${q.question_id}`);
+        if (storedAnswer && storedAnswer.trim()) {
+          userAnswers[q.question_id] = {
+            user_answer: storedAnswer,
+            status: "answered",
+            answered_at: new Date().toISOString(),
+          };
+        } else if (q.user_answer) {
           userAnswers[q.question_id] = {
             user_answer: q.user_answer,
             status: "answered",
@@ -298,7 +319,11 @@ export default function ClassificationPage() {
           };
         }
 
-        if (q.llm_rating !== undefined && q.llm_rating !== null) {
+        // Check localStorage for ratings first
+        const storedRating = localStorage.getItem(`rating_${q.question_id}`);
+        if (storedRating) {
+          userRatings[q.question_id] = parseInt(storedRating, 10);
+        } else if (q.llm_rating !== undefined && q.llm_rating !== null) {
           userRatings[q.question_id] = q.llm_rating;
         }
       });
@@ -324,6 +349,12 @@ export default function ClassificationPage() {
         const data = await response.json();
         throw new Error(data.error || "Failed to save data");
       }
+
+      // Clear localStorage after successful submission
+      questions.forEach((q) => {
+        localStorage.removeItem(`answer_${q.question_id}`);
+        localStorage.removeItem(`rating_${q.question_id}`);
+      });
 
       // Navigate to thank you page
       router.push("/thank-you");
@@ -358,23 +389,30 @@ export default function ClassificationPage() {
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold">Quality Classification</h1>
+          <h1 className="text-3xl font-bold">Medical Response Analysis</h1>
           {/* CHANGE 3: ADDED INSTRUCTIONS */}
-          <p className="text-muted-foreground mt-2 max-w-3xl">
-            This is a two-step process. For each question below, first select
-            10-15 relevant qualities from the list. Then, drag and drop those
-            qualities from the "Unassigned" area into the best-fitting
-            categories.
+          <p className="text-muted-foreground mt-2 max-w-6xl">
+            As a medical expert, please help us analyze the AI's clinical
+            responses. Complete the two steps below for each question:
+            <br />
+            First, select 10-15 qualities that characterize the AI's medical
+            assessment.
+            <br />
+            Then, categorize these qualities to help us understand the AI's
+            strengths and limitations in providing healthcare advice and
+            information.
           </p>
         </div>
 
         {error && (
-          <Alert variant="destructive" className="mb-6">
-            <AlertDescription>{error}</AlertDescription>
+          <Alert variant="destructive" className="mb-4 sm:mb-6">
+            <AlertDescription className="text-xs sm:text-sm">
+              {error}
+            </AlertDescription>
           </Alert>
         )}
 
-        <div className="space-y-12">
+        <div className="space-y-8 sm:space-y-12">
           {questions.map((question, index) => {
             const selectedCount =
               selectedQualities[question.question_id]?.length || 0;
@@ -461,7 +499,7 @@ export default function ClassificationPage() {
                     </div>
                     <div className="space-y-2">
                       <h4 className="font-semibold text-foreground flex items-center text-md">
-                        AI Answer
+                        AI's Medical Assessment
                       </h4>
                       <div className="bg-[#f8f5ff] dark:bg-[var(--color-purple-muted-dark)]/10 p-4 rounded-lg border border-[var(--color-purple-muted-border)] dark:border-[var(--color-purple-muted-dark-border)]">
                         <p className="text-sm leading-relaxed whitespace-pre-wrap">
@@ -491,18 +529,20 @@ export default function ClassificationPage() {
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-6 border-t">
-                    <div className="space-y-4">
+                    <div className="space-y-3 sm:space-y-4">
                       <div className="text-center lg:text-left">
-                        <h2 className="text-lg font-semibold flex items-center gap-2">
-                          <ListChecks className="text-[var(--color-purple-muted)]" />
-                          Step 1: Select & Refine Qualities
+                        <h2 className="text-base sm:text-lg font-semibold flex items-center gap-1 sm:gap-2">
+                          <ListChecks className="text-[var(--color-purple-muted)] h-4 w-4 sm:h-5 sm:w-5" />
+                          Step 1: Identify Key Qualities
                         </h2>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Check 10-15 qualities. Click the{" "}
-                          <Pencil className="inline h-3 w-3" /> to edit text.
+                        <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                          Select 10-15 qualities that characterize the AI's
+                          response. Click the{" "}
+                          <Pencil className="inline h-3 w-3" /> to modify if
+                          needed.
                         </p>
                       </div>
-                      <div className="space-y-1 p-3 border rounded-lg max-h-[500px] overflow-y-auto bg-white dark:bg-zinc-900">
+                      <div className="space-y-1 p-2 sm:p-3 border rounded-lg max-h-[300px] sm:max-h-[400px] md:max-h-[500px] overflow-y-auto bg-white dark:bg-zinc-900">
                         {question.rubrics?.map((quality, idx) => {
                           const isSelected =
                             selectedQualities[question.question_id]?.includes(
@@ -513,10 +553,10 @@ export default function ClassificationPage() {
                           return (
                             <div
                               key={quality}
-                              className={`flex items-center space-x-3 p-3 rounded-lg transition-colors ${isSelected ? "bg-[#f8f5ff] dark:bg-[var(--color-purple-muted-dark)]/20" : "hover:bg-slate-50 dark:hover:bg-zinc-800/50"}`}
+                              className={`flex items-center space-x-2 sm:space-x-3 p-2 sm:p-3 rounded-lg transition-colors ${isSelected ? "bg-[#f8f5ff] dark:bg-[var(--color-purple-muted-dark)]/20" : "hover:bg-slate-50 dark:hover:bg-zinc-800/50"}`}
                             >
                               {isCurrentlyEditing ? (
-                                <div className="flex-1 flex items-center gap-2">
+                                <div className="flex-1 flex items-center gap-1 sm:gap-2">
                                   <Input
                                     value={
                                       editing[question.question_id]?.current ||
@@ -531,26 +571,27 @@ export default function ClassificationPage() {
                                         },
                                       }))
                                     }
-                                    className="h-8"
+                                    className="h-7 sm:h-8 text-xs sm:text-sm"
                                   />
                                   <Button
-                                    size="icon"
-                                    className="h-8 w-8"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 sm:h-8 sm:w-8 p-0"
                                     onClick={() =>
                                       saveEditedQuality(question.question_id)
                                     }
                                   >
-                                    <Check className="h-4 w-4" />
+                                    <Check className="h-3 w-3 sm:h-4 sm:w-4" />
                                   </Button>
                                   <Button
-                                    size="icon"
                                     variant="ghost"
-                                    className="h-8 w-8"
+                                    size="sm"
+                                    className="h-7 w-7 sm:h-8 sm:w-8 p-0"
                                     onClick={() =>
                                       cancelEdit(question.question_id)
                                     }
                                   >
-                                    <X className="h-4 w-4" />
+                                    <X className="h-3 w-3 sm:h-4 sm:w-4" />
                                   </Button>
                                 </div>
                               ) : (
@@ -565,11 +606,11 @@ export default function ClassificationPage() {
                                         quality,
                                       )
                                     }
-                                    className="h-5 w-5 rounded border-gray-300 text-[var(--color-purple-muted)] focus:ring-[var(--color-purple-muted-border)]"
+                                    className="h-4 w-4 sm:h-5 sm:w-5 rounded border-gray-300 text-[var(--color-purple-muted)] focus:ring-[var(--color-purple-muted-border)]"
                                   />
                                   <label
                                     htmlFor={`${question.question_id}-${idx}`}
-                                    className="flex-1 text-sm cursor-pointer"
+                                    className="flex-1 text-xs sm:text-sm cursor-pointer"
                                   >
                                     {quality}
                                   </label>
@@ -577,7 +618,7 @@ export default function ClassificationPage() {
                                     disabled={isEditing}
                                     variant="ghost"
                                     size="icon"
-                                    className="h-8 w-8"
+                                    className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 p-0"
                                     onClick={() =>
                                       handleEditQuality(
                                         question.question_id,
@@ -585,7 +626,7 @@ export default function ClassificationPage() {
                                       )
                                     }
                                   >
-                                    <Pencil className="h-4 w-4" />
+                                    <Pencil className="h-3 w-3 sm:h-4 sm:w-4" />
                                   </Button>
                                 </>
                               )}
@@ -594,15 +635,16 @@ export default function ClassificationPage() {
                         })}
                       </div>
                     </div>
-                    <div className="space-y-4">
+                    <div className="space-y-3 sm:space-y-4">
                       <div className="text-center lg:text-left">
-                        <h2 className="text-lg font-semibold flex items-center gap-2">
-                          <ArrowDownUp className="text-[var(--color-purple-muted)]" />
-                          Step 2: Classify Qualities
+                        <h2 className="text-base sm:text-lg font-semibold flex items-center gap-1 sm:gap-2">
+                          <ArrowDownUp className="text-[var(--color-purple-muted)] h-4 w-4 sm:h-5 sm:w-5" />
+                          Step 2: Categorize Response Attributes
                         </h2>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Drag the selected qualities into the best-fitting
-                          groups below.
+                        <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                          Drag each quality into the most appropriate medical
+                          category to help us understand the AI's clinical
+                          strengths and weaknesses.
                         </p>
                       </div>
                       <DndContext
@@ -612,10 +654,10 @@ export default function ClassificationPage() {
                           handleDragEnd(e, question.question_id)
                         }
                       >
-                        <div className="space-y-4">
+                        <div className="space-y-3 sm:space-y-4">
                           <CategoryDropzone
                             id="Unassigned"
-                            title="Unassigned"
+                            title="Unclassified Qualities (Drag to Categories)"
                             isOver={
                               activeDragId
                                 ? "Unassigned" ===
@@ -634,7 +676,7 @@ export default function ClassificationPage() {
                               </DraggableQuality>
                             ))}
                           </CategoryDropzone>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                             {CATEGORIES.map((category) => (
                               <CategoryDropzone
                                 key={category}
@@ -664,12 +706,12 @@ export default function ClassificationPage() {
                       </DndContext>
                     </div>
                   </div>
-                  <div className="mt-6 pt-6 border-t">
-                    <h4 className="font-medium mb-2">
-                      Any suggestions or missing qualities?
+                  <div className="mt-4 pt-4 sm:mt-6 sm:pt-6 border-t">
+                    <h4 className="font-medium text-sm sm:text-base mb-2">
+                      Additional Clinical Insights
                     </h4>
                     <Textarea
-                      placeholder="Provide feedback..."
+                      placeholder="Share any professional observations about the AI's clinical reasoning, knowledge gaps, or areas for improvement..."
                       value={feedback[question.question_id] || ""}
                       onChange={(e) =>
                         setFeedback((prev) => ({
@@ -677,7 +719,7 @@ export default function ClassificationPage() {
                           [question.question_id]: e.target.value,
                         }))
                       }
-                      className="min-h-[80px]"
+                      className="min-h-[60px] sm:min-h-[80px] text-xs sm:text-sm"
                     />
                   </div>
                 </CardContent>
@@ -686,25 +728,32 @@ export default function ClassificationPage() {
           })}
         </div>
 
-        <div className="mt-8 flex justify-between">
+        <div className="mt-6 sm:mt-8 flex flex-col-reverse sm:flex-row justify-between gap-3 sm:gap-0">
           <Button
             onClick={() => router.push("/rating")}
             variant="outline"
             size="lg"
             disabled={isSubmitting}
+            className="text-xs sm:text-sm h-10 sm:h-11"
           >
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Ratings
+            <ArrowLeft className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> Return
+            to Rating Assessment
           </Button>
-          <Button onClick={handleSubmit} size="lg" disabled={isSubmitting}>
+          <Button
+            onClick={handleSubmit}
+            size="lg"
+            disabled={isSubmitting}
+            className="text-xs sm:text-sm h-10 sm:h-11"
+          >
             {isSubmitting ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
                 Saving...
               </>
             ) : (
               <>
-                Finish
-                <ArrowRight className="ml-2 h-4 w-4" />
+                Submit Expert Evaluation
+                <ArrowRight className="ml-1 sm:ml-2 h-3 w-3 sm:h-4 sm:w-4" />
               </>
             )}
           </Button>
