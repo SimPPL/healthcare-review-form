@@ -25,26 +25,25 @@ export function getDynamoDbClient() {
   };
 
   // For local development, use environment variables if available
-  if (IS_LOCAL_DEVELOPMENT) {
-    const region = process.env.MY_APP_AWS_REGION || process.env.AWS_REGION;
-    const accessKeyId =
-      process.env.MY_APP_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
-    const secretAccessKey =
-      process.env.MY_APP_AWS_SECRET_ACCESS_KEY ||
-      process.env.AWS_SECRET_ACCESS_KEY;
 
-    // Override region if specified for local development
-    if (region) {
-      clientConfig.region = region;
-    }
+  const region = process.env.MY_APP_AWS_REGION || process.env.AWS_REGION;
+  const accessKeyId =
+    process.env.MY_APP_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey =
+    process.env.MY_APP_AWS_SECRET_ACCESS_KEY ||
+    process.env.AWS_SECRET_ACCESS_KEY;
 
-    // Add credentials only for local development
-    if (accessKeyId && secretAccessKey) {
-      clientConfig.credentials = {
-        accessKeyId,
-        secretAccessKey,
-      };
-    }
+  // Override region if specified for local development
+  if (region) {
+    clientConfig.region = region;
+  }
+
+  // Add credentials only for local development
+  if (accessKeyId && secretAccessKey) {
+    clientConfig.credentials = {
+      accessKeyId,
+      secretAccessKey,
+    };
   }
 
   // Initialize client - in AWS this will use instance role credentials automatically
