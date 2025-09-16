@@ -54,15 +54,36 @@ export async function POST(request: NextRequest) {
     let scanResult;
     try {
       console.log("Scanning DynamoDB table:", DATASET_TABLE);
+      console.log("Environment:", process.env.NODE_ENV);
+      console.log(
+        "Region set:",
+        process.env.AWS_REGION || "Not explicitly set",
+      );
+
       // Initialize DynamoDB client for this request
       const dynamoDb = getDynamoDbClient();
       console.log("DynamoDB Client:", "Initialized");
 
+      // Log detailed information about the scan request
       const scanCommand = new ScanCommand({
         TableName: DATASET_TABLE,
         FilterExpression: "times_answered < target_evaluations",
       });
-      scanResult = await dynamoDb.send(scanCommand);
+      console.log("Sending scan command to table:", DATASET_TABLE);
+
+      try {
+        scanResult = await dynamoDb.send(scanCommand);
+        console.log(
+          "Scan successful, items returned:",
+          scanResult.Items?.length || 0,
+        );
+      } catch (scanError) {
+        console.error(
+          "Detailed scan error:",
+          JSON.stringify(scanError, null, 2),
+        );
+        throw scanError;
+      }
     } catch (error) {
       console.error("Error scanning dataset table:", error);
       return NextResponse.json(
@@ -70,6 +91,10 @@ export async function POST(request: NextRequest) {
           error: `Database connection failed: ${error instanceof Error ? error.message : String(error)}. Please check your AWS configuration.`,
           details: {
             table: DATASET_TABLE,
+            region: process.env.AWS_REGION || "Not explicitly set",
+            environment: process.env.NODE_ENV,
+            errorDetails: error instanceof Error ? error.stack : String(error),
+            timestamp: new Date().toISOString(),
           },
         },
         { status: 500 },
@@ -143,9 +168,14 @@ export async function POST(request: NextRequest) {
 
         // Get DynamoDB client
         const dynamoDb = getDynamoDbClient();
+        console.log(
+          `Sending update for question ${question.question_id} to table ${DATASET_TABLE}`,
+        );
         await dynamoDb.send(updateCommand);
         processedQuestionIds.push(question.question_id);
-        console.log(`[v0] Updated question ${question.question_id}`);
+        console.log(
+          `[v0] Updated question ${question.question_id} successfully`,
+        );
       } catch (error) {
         console.error(
           `[v0] Error updating question ${question.question_id}:`,
@@ -201,8 +231,13 @@ export async function POST(request: NextRequest) {
 
         // Get DynamoDB client
         const dynamoDb = getDynamoDbClient();
+        console.log(
+          `Sending create command to table ${RESPONSES_TABLE} for user ${userId}`,
+        );
         await dynamoDb.send(putCommand);
-        console.log(`[v0] Created user response record for ${userId}`);
+        console.log(
+          `[v0] Created user response record for ${userId} successfully`,
+        );
       } catch (error) {
         console.error(`[v0] Error creating user response record:`, error);
         return NextResponse.json(
@@ -235,6 +270,16 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error assigning questions:", error);
+    console.error(
+      "Error details:",
+      error instanceof Error ? error.stack : String(error),
+    );
+    console.error(
+      "AWS region:",
+      process.env.AWS_REGION || "Not explicitly set",
+    );
+    console.error("Environment:", process.env.NODE_ENV);
+
     // Check for missing environment variables
     const missingVars = [];
     // Only check for table names, not AWS credentials
@@ -251,6 +296,10 @@ export async function POST(request: NextRequest) {
             missingVars.length > 0 ? missingVars : undefined,
           datasetTable: DATASET_TABLE,
           responsesTable: RESPONSES_TABLE,
+          region: process.env.AWS_REGION || "Not explicitly set",
+          environment: process.env.NODE_ENV,
+          timestamp: new Date().toISOString(),
+          errorType: error.constructor?.name || typeof error,
         },
       },
       { status: 500 },
