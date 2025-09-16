@@ -3,7 +3,7 @@ import {
   getDynamoDbClient,
   RESPONSES_TABLE,
   DATASET_TABLE,
-} from "../_lib/dynamoDb";
+} from "@/lib/aws/dynamodb";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { Question, UserResponse, QuestionAssignment } from "@/types";
 
@@ -22,10 +22,8 @@ export async function GET(request: NextRequest) {
 
     console.log(`Fetching assigned questions for user_id: ${userId}`);
 
-    // Fetch user response record
     let userResult: { Item?: any };
     try {
-      // Initialize DynamoDB client for this request
       const dynamoDb = getDynamoDbClient();
 
       const userCommand = new GetCommand({
@@ -66,7 +64,6 @@ export async function GET(request: NextRequest) {
         let rubrics: string[] = [];
 
         try {
-          // Get DynamoDB client for this operation
           const dynamoDb = getDynamoDbClient();
 
           const datasetResult = await dynamoDb.send(
@@ -87,7 +84,6 @@ export async function GET(request: NextRequest) {
             `Failed to fetch rubrics for question ${questionId}:`,
             err,
           );
-          // Continue without rubrics instead of failing
         }
 
         const userAnswer = userRecord.answers?.[questionId]?.user_answer || "";
@@ -96,20 +92,15 @@ export async function GET(request: NextRequest) {
           console.log(`Question ${questionId} has no user answer yet`);
         }
 
-        // Cast questionData to QuestionAssignment type
         const typedQuestionData = questionData as QuestionAssignment;
 
-        // Create response object with proper typing
         questions.push({
-          // Required fields from UserResponse
           user_id: userId,
           user_name: userRecord.user_name || "",
           user_profession: userRecord.user_profession || "",
           email: userRecord.email || "",
           assigned_at:
             typedQuestionData.assigned_at || new Date().toISOString(),
-
-          // Question fields
           question_id: questionId,
           question_text: typedQuestionData.question_text,
           llm_response: typedQuestionData.llm_response,

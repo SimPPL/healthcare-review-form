@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getDynamoDbClient, RESPONSES_TABLE } from "../_lib/dynamoDb";
+import { getDynamoDbClient, RESPONSES_TABLE } from "@/lib/aws/dynamodb";
 import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { ClassificationData, UserResponseRecord } from "@/types";
+import { ClassificationData } from "@/types";
 
 export async function POST(request: NextRequest) {
   try {
@@ -47,7 +47,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build the update expression based on what data is provided
     let updateExpression =
       "SET classification_data = :classificationData, #s = :status, updated_at = :updatedAt";
     const expressionAttributeNames = {
@@ -65,19 +64,16 @@ export async function POST(request: NextRequest) {
       ":updatedAt": new Date().toISOString(),
     };
 
-    // Add answers if provided
     if (answers && Object.keys(answers).length > 0) {
       updateExpression += ", answers = :answers";
       expressionAttributeValues[":answers"] = answers;
     }
 
-    // Add ratings if provided
     if (ratings && Object.keys(ratings).length > 0) {
       updateExpression += ", ratings = :ratings";
       expressionAttributeValues[":ratings"] = ratings;
     }
 
-    // Initialize DynamoDB client for this request
     const dynamoDb = getDynamoDbClient();
 
     const updateCommand = new UpdateCommand({

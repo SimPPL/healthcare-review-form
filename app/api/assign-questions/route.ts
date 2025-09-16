@@ -3,7 +3,7 @@ import {
   getDynamoDbClient,
   DATASET_TABLE,
   RESPONSES_TABLE,
-} from "../_lib/dynamoDb";
+} from "@/lib/aws/dynamodb";
 import { ScanCommand, UpdateCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { v4 as uuidv4 } from "uuid";
 import {
@@ -12,12 +12,6 @@ import {
   UserInfo,
   UserResponseRecord,
 } from "@/types";
-
-// Use Question type from types/index.ts
-
-// Use QuestionAssignment type from types/index.ts
-
-// Use UserResponseRecord type from types/index.ts
 
 export async function POST(request: NextRequest) {
   try {
@@ -53,37 +47,12 @@ export async function POST(request: NextRequest) {
 
     let scanResult;
     try {
-      console.log("Scanning DynamoDB table:", DATASET_TABLE);
-      console.log("Environment:", process.env.NODE_ENV);
-      console.log(
-        "Region set:",
-        process.env.AWS_REGION || "Not explicitly set",
-      );
-
-      // Initialize DynamoDB client for this request
       const dynamoDb = getDynamoDbClient();
-      console.log("DynamoDB Client:", "Initialized");
-
-      // Log detailed information about the scan request
       const scanCommand = new ScanCommand({
         TableName: DATASET_TABLE,
         FilterExpression: "times_answered < target_evaluations",
       });
-      console.log("Sending scan command to table:", DATASET_TABLE);
-
-      try {
-        scanResult = await dynamoDb.send(scanCommand);
-        console.log(
-          "Scan successful, items returned:",
-          scanResult.Items?.length || 0,
-        );
-      } catch (scanError) {
-        console.error(
-          "Detailed scan error:",
-          JSON.stringify(scanError, null, 2),
-        );
-        throw scanError;
-      }
+      scanResult = await dynamoDb.send(scanCommand);
     } catch (error) {
       console.error("Error scanning dataset table:", error);
       return NextResponse.json(
@@ -142,19 +111,17 @@ export async function POST(request: NextRequest) {
       uniqueQuestions.map((q) => q.question_id),
     );
 
-    // First, update the dataset table for each question
     for (const question of uniqueQuestions) {
       if (
         !question.question_id ||
         !question.question_text ||
         !question.llm_response
       ) {
-        console.error("[v0] Invalid question data:", question);
+        console.error("Invalid question data:", question);
         continue;
       }
 
       try {
-        // Update times_answered in dataset table
         const updateCommand = new UpdateCommand({
           TableName: DATASET_TABLE,
           Key: { question_id: question.question_id },
@@ -166,30 +133,28 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        // Get DynamoDB client
         const dynamoDb = getDynamoDbClient();
-        console.log(
-          `Sending update for question ${question.question_id} to table ${DATASET_TABLE}`,
-        );
         await dynamoDb.send(updateCommand);
-        processedQuestionIds.push(question.question_id);
-        console.log(
-          `[v0] Updated question ${question.question_id} successfully`,
-        );
+        console.log(`Successfully updated question ${question.question_id}`);
       } catch (error) {
         console.error(
-          `[v0] Error updating question ${question.question_id}:`,
+          `Error updating question ${question.question_id}:`,
           error,
         );
-        // Continue with other questions even if one fails
       }
+
+      // Always add valid questions to assignment, regardless of update success
+      processedQuestionIds.push(question.question_id);
     }
 
-    // Then, create response records for successfully processed questions
     const questionsMap: Record<string, QuestionAssignment> = {};
     for (const question of uniqueQuestions) {
-      if (!processedQuestionIds.includes(question.question_id)) {
-        continue; // Skip questions that failed to update
+      if (
+        !question.question_id ||
+        !question.question_text ||
+        !question.llm_response
+      ) {
+        continue;
       }
 
       questionsMap[question.question_id] = {
@@ -206,7 +171,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Create single user record with all questions
     if (Object.keys(questionsMap).length > 0) {
       const userResponseItem: UserResponseRecord = {
         user_id: userId,
@@ -229,17 +193,10 @@ export async function POST(request: NextRequest) {
           Item: userResponseItem,
         });
 
-        // Get DynamoDB client
         const dynamoDb = getDynamoDbClient();
-        console.log(
-          `Sending create command to table ${RESPONSES_TABLE} for user ${userId}`,
-        );
         await dynamoDb.send(putCommand);
-        console.log(
-          `[v0] Created user response record for ${userId} successfully`,
-        );
       } catch (error) {
-        console.error(`[v0] Error creating user response record:`, error);
+        console.error(`Error creating user response record:`, error);
         return NextResponse.json(
           {
             error: "Failed to create user record. Please try again.",
@@ -250,6 +207,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (assignedQuestions.length === 0) {
+      console.error("No questions were assigned - this should not happen");
       return NextResponse.json(
         {
           error:
@@ -259,9 +217,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(
-      `[v0] Successfully assigned ${assignedQuestions.length} questions`,
-    );
+    console.log(`Successfully assigned ${assignedQuestions.length} questions`);
 
     return NextResponse.json({
       userId,
@@ -270,19 +226,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error assigning questions:", error);
-    console.error(
-      "Error details:",
-      error instanceof Error ? error.stack : String(error),
-    );
-    console.error(
-      "AWS region:",
-      process.env.AWS_REGION || "Not explicitly set",
-    );
-    console.error("Environment:", process.env.NODE_ENV);
-
-    // Check for missing environment variables
     const missingVars = [];
-    // Only check for table names, not AWS credentials
     if (!process.env.DATASET_TABLE && process.env.NODE_ENV === "development")
       missingVars.push("DATASET_TABLE");
     if (!process.env.RESPONSES_TABLE && process.env.NODE_ENV === "development")
@@ -299,7 +243,7 @@ export async function POST(request: NextRequest) {
           region: process.env.AWS_REGION || "Not explicitly set",
           environment: process.env.NODE_ENV,
           timestamp: new Date().toISOString(),
-          errorType: error.constructor?.name || typeof error,
+          errorType: (error as any)?.constructor?.name || typeof error,
         },
       },
       { status: 500 },

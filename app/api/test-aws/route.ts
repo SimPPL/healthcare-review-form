@@ -4,12 +4,8 @@ import {
   getDynamoDbClient,
   DATASET_TABLE,
   RESPONSES_TABLE,
-} from "../_lib/dynamoDb";
+} from "@/lib/aws/dynamodb";
 
-/**
- * Enhanced API route to check AWS environment variables and connection
- * Provides detailed diagnostics for troubleshooting AWS configuration
- */
 export async function GET() {
   try {
     // Get all environment variables for diagnostic purposes
