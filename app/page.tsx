@@ -143,7 +143,7 @@ export default function HomePage() {
             <div className="flex items-center justify-center mb-4">
               <img
                 src="/logo.png"
-                alt="Health Eval Feedback Logo"
+                alt="Healthcare Review FormLogo"
                 className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg"
                 onError={(e) => {
                   // Fallback to placeholder if logo not found
@@ -164,7 +164,7 @@ export default function HomePage() {
               </div>
             </div>
             <CardTitle className="text-xl sm:text-2xl font-semibold text-foreground">
-              Health Eval Feedback
+              Healthcare Review Form
             </CardTitle>
             <CardDescription className="text-muted-foreground text-sm">
               Please provide your information to get started

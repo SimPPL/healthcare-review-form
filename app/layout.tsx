@@ -8,7 +8,7 @@ import { NavigationGuard } from "@/components/navigation-guard";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Health Eval Feedback",
+  title: "Healthcare Review Form",
   description: "Evaluate AI responses to medical questions",
   generator: "v0.app",
 };

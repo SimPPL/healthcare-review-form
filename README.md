@@ -1,4 +1,4 @@
-# Health Eval Feedback
+# Healthcare Review Form
 
 A Next.js application for evaluating AI responses to medical questions by medical professionals.
 
@@ -25,7 +25,7 @@ Create two tables in AWS DynamoDB:
 - Partition Key: `question_id` (String)
 - Fields: `question_text`, `llm_response`, `target_evaluations`, `theme`, `times_answered`
 
-#### ai4health-responses  
+#### ai4health-responses
 - Partition Key: `user_id` (String)
 - Sort Key: `question_id` (String)
 - Fields: `user_name`, `user_profession`, `user_extra_info`, `question_text`, `llm_response`, `status`, `assigned_at`, `user_answer`, `llm_rating`, `submitted_at`
@@ -51,7 +51,7 @@ Visit `http://localhost:3000` to start the evaluation process.
 
 1. **User Info**: Enter name, medical profession, and optional details
 2. **Questions**: Answer assigned clinical questions with your approach
-3. **Rating**: Rate the AI responses compared to your answers (0-10 scale)  
+3. **Rating**: Rate the AI responses compared to your answers (0-10 scale)
 4. **Thank You**: Confirmation of completed evaluation
 
 ## Troubleshooting
