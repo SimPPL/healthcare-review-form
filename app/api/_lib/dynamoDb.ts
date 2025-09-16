@@ -1,50 +1,51 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
+// Hardcoded table names for production
+const HARDCODED_DATASET_TABLE = "ai4health-dataset";
+const HARDCODED_RESPONSES_TABLE = "ai4health-responses";
+
 /**
  * Creates and returns a DynamoDB Document Client
  * This function is meant to be used ONLY in server-side contexts (API routes)
+ *
+ * In production (AWS), it will use the instance role credentials
+ * In local development, it will use environment variables
  */
 export function getDynamoDbClient() {
-  // Get region from either custom or standard environment variable
-  const region = process.env.MY_APP_AWS_REGION || process.env.AWS_REGION;
-  if (!region) {
-    throw new Error("AWS region is required (MY_APP_AWS_REGION or AWS_REGION)");
-  }
+  // Create client config - empty by default for AWS instance role
+  const clientConfig: any = {};
 
-  // Get access key from either custom or standard environment variable
+  // For local development, use environment variables if available
+  const region = process.env.MY_APP_AWS_REGION || process.env.AWS_REGION;
   const accessKeyId =
     process.env.MY_APP_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
-  if (!accessKeyId) {
-    throw new Error(
-      "AWS access key ID is required (MY_APP_AWS_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID)",
-    );
-  }
-
-  // Get secret key from either custom or standard environment variable
   const secretAccessKey =
     process.env.MY_APP_AWS_SECRET_ACCESS_KEY ||
     process.env.AWS_SECRET_ACCESS_KEY;
-  if (!secretAccessKey) {
-    throw new Error(
-      "AWS secret access key is required (MY_APP_AWS_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY)",
-    );
+
+  // If we have credentials from environment variables, use them (for local dev)
+  if (region) {
+    clientConfig.region = region;
   }
 
-  // Initialize the DynamoDB client with the available credentials
-  const client = new DynamoDBClient({
-    region,
-    credentials: {
+  if (accessKeyId && secretAccessKey) {
+    clientConfig.credentials = {
       accessKeyId,
       secretAccessKey,
-    },
-  });
+    };
+  }
+
+  // Initialize client - in AWS this will use instance role
+  // In local dev it will use env vars if available
+  const client = new DynamoDBClient(clientConfig);
 
   // Return the document client for easier interaction with DynamoDB
   return DynamoDBDocumentClient.from(client);
 }
 
-// Table names are safe to export as constants - use either custom or default values
-export const DATASET_TABLE = process.env.DATASET_TABLE || "ai4health-dataset";
+// Table names - use environment variables if available, otherwise use hardcoded values
+export const DATASET_TABLE =
+  process.env.DATASET_TABLE || HARDCODED_DATASET_TABLE;
 export const RESPONSES_TABLE =
-  process.env.RESPONSES_TABLE || "ai4health-responses";
+  process.env.RESPONSES_TABLE || HARDCODED_RESPONSES_TABLE;
