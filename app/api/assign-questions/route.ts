@@ -80,17 +80,31 @@ export async function POST(request: NextRequest) {
 
     let scanResult;
     try {
+      console.log("Scanning DynamoDB table:", DATASET_TABLE);
+      console.log("AWS Region:", process.env.MY_APP_AWS_REGION);
+      console.log(
+        "DynamoDB Client:",
+        !!dynamoDb ? "Initialized" : "Failed to initialize",
+      );
+
       const scanCommand = new ScanCommand({
         TableName: DATASET_TABLE,
         FilterExpression: "times_answered < target_evaluations",
       });
       scanResult = await dynamoDb.send(scanCommand);
+      console.log("Scan result items count:", scanResult.Items?.length || 0);
     } catch (error) {
       console.error("Error scanning dataset table:", error);
       return NextResponse.json(
         {
-          error:
-            "Database connection failed. Please check your AWS configuration.",
+          error: `Database connection failed: ${error instanceof Error ? error.message : String(error)}. Please check your AWS configuration.`,
+          details: {
+            table: DATASET_TABLE,
+            region: process.env.MY_APP_AWS_REGION,
+            hasCredentials:
+              !!process.env.MY_APP_AWS_ACCESS_KEY_ID &&
+              !!process.env.MY_APP_AWS_SECRET_ACCESS_KEY,
+          },
         },
         { status: 500 },
       );
@@ -251,10 +265,26 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error assigning questions:", error);
+    // Check for missing environment variables
+    const missingVars = [];
+    if (!process.env.MY_APP_AWS_REGION) missingVars.push("MY_APP_AWS_REGION");
+    if (!process.env.MY_APP_AWS_ACCESS_KEY_ID)
+      missingVars.push("MY_APP_AWS_ACCESS_KEY_ID");
+    if (!process.env.MY_APP_AWS_SECRET_ACCESS_KEY)
+      missingVars.push("MY_APP_AWS_SECRET_ACCESS_KEY");
+    if (!process.env.DATASET_TABLE) missingVars.push("DATASET_TABLE");
+    if (!process.env.RESPONSES_TABLE) missingVars.push("RESPONSES_TABLE");
+
     return NextResponse.json(
       {
-        error:
-          "Internal server error. Please check your configuration and try again.",
+        error: `Internal server error: ${error instanceof Error ? error.message : String(error)}`,
+        details: {
+          missingEnvironmentVariables:
+            missingVars.length > 0 ? missingVars : undefined,
+          region: process.env.MY_APP_AWS_REGION || "Not set",
+          datasetTable: process.env.DATASET_TABLE || "Not set",
+          responsesTable: process.env.RESPONSES_TABLE || "Not set",
+        },
       },
       { status: 500 },
     );
