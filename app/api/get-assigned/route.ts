@@ -36,7 +36,12 @@ export async function GET(request: NextRequest) {
     } catch (err) {
       console.error("Failed to fetch user record from RESPONSES_TABLE:", err);
       return NextResponse.json(
-        { error: "Failed to fetch user record" },
+        {
+          error: "Failed to fetch user record",
+          details: {
+            table: RESPONSES_TABLE,
+          },
+        },
         { status: 500 },
       );
     }
@@ -82,6 +87,7 @@ export async function GET(request: NextRequest) {
             `Failed to fetch rubrics for question ${questionId}:`,
             err,
           );
+          // Continue without rubrics instead of failing
         }
 
         const userAnswer = userRecord.answers?.[questionId]?.user_answer || "";
@@ -123,7 +129,15 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Unhandled error in GET /api/get-assigned:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      {
+        error: "Internal server error",
+        details: {
+          tables: {
+            datasetTable: DATASET_TABLE,
+            responsesTable: RESPONSES_TABLE,
+          },
+        },
+      },
       { status: 500 },
     );
   }

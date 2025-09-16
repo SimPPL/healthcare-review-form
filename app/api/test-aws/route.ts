@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import {
+  getDynamoDbClient,
+  DATASET_TABLE,
+  RESPONSES_TABLE,
+} from "../_lib/dynamoDb";
 
 /**
  * Enhanced API route to check AWS environment variables and connection
@@ -10,8 +15,13 @@ export async function GET() {
     // Get all environment variables for diagnostic purposes
     const allEnvVars = { ...process.env };
 
+    // Check if we're in local development mode
+    const isLocalDevelopment = process.env.NODE_ENV === "development";
+
     // Format environment variables for safe display
     const envVars = {
+      NODE_ENV: process.env.NODE_ENV || "Not set",
+      IS_LOCAL: isLocalDevelopment ? "Yes" : "No",
       MY_APP_AWS_REGION: process.env.MY_APP_AWS_REGION || "Not set",
       MY_APP_AWS_ACCESS_KEY_ID: process.env.MY_APP_AWS_ACCESS_KEY_ID
         ? `Set (length: ${process.env.MY_APP_AWS_ACCESS_KEY_ID.length})`
@@ -19,8 +29,12 @@ export async function GET() {
       MY_APP_AWS_SECRET_ACCESS_KEY: process.env.MY_APP_AWS_SECRET_ACCESS_KEY
         ? `Set (length: ${process.env.MY_APP_AWS_SECRET_ACCESS_KEY.length})`
         : "Not set",
-      DATASET_TABLE: process.env.DATASET_TABLE || "Not set",
-      RESPONSES_TABLE: process.env.RESPONSES_TABLE || "Not set",
+      DATASET_TABLE:
+        process.env.DATASET_TABLE ||
+        "Not set (using hardcoded: " + DATASET_TABLE + ")",
+      RESPONSES_TABLE:
+        process.env.RESPONSES_TABLE ||
+        "Not set (using hardcoded: " + RESPONSES_TABLE + ")",
     };
 
     // Check for AWS-prefixed environment variables (which might be used instead)
@@ -36,26 +50,26 @@ export async function GET() {
         : "Not set",
     };
 
-    // Test AWS connectivity if credentials are available
+    // Test AWS connectivity using our dynamoDb client
     let awsConnectionTest = "Not tested";
     try {
-      if (
-        process.env.MY_APP_AWS_REGION &&
-        process.env.MY_APP_AWS_ACCESS_KEY_ID &&
-        process.env.MY_APP_AWS_SECRET_ACCESS_KEY
-      ) {
-        const client = new DynamoDBClient({
-          region: process.env.MY_APP_AWS_REGION,
-          credentials: {
-            accessKeyId: process.env.MY_APP_AWS_ACCESS_KEY_ID,
-            secretAccessKey: process.env.MY_APP_AWS_SECRET_ACCESS_KEY,
-          },
-        });
+      // Just create the client using our production-ready function
+      const client = getDynamoDbClient();
 
-        // Just initializing the client, not making actual calls
-        awsConnectionTest = "AWS client initialized successfully";
+      // Just initializing the client, not making actual calls
+      awsConnectionTest = "AWS client initialized successfully";
+
+      // Note whether we're using instance role or local credentials
+      if (
+        isLocalDevelopment &&
+        (process.env.MY_APP_AWS_ACCESS_KEY_ID ||
+          process.env.AWS_ACCESS_KEY_ID) &&
+        (process.env.MY_APP_AWS_SECRET_ACCESS_KEY ||
+          process.env.AWS_SECRET_ACCESS_KEY)
+      ) {
+        awsConnectionTest += " (using local credentials)";
       } else {
-        awsConnectionTest = "Skipped - missing environment variables";
+        awsConnectionTest += " (using instance role credentials)";
       }
     } catch (awsError) {
       awsConnectionTest = `AWS client initialization failed: ${
@@ -79,6 +93,10 @@ export async function GET() {
         awsPrefixVars,
         awsConnectionTest,
         serverInfo,
+        tables: {
+          datasetTable: DATASET_TABLE,
+          responsesTable: RESPONSES_TABLE,
+        },
         timestamp: new Date().toISOString(),
         allEnvVarKeys: Object.keys(allEnvVars).filter(
           (key) =>
