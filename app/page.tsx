@@ -77,11 +77,29 @@ export default function HomePage() {
         }),
       });
 
-      const data = await response.json();
-
+      // Check if response is OK before trying to parse JSON
       if (!response.ok) {
-        throw new Error(data.error || "Failed to assign questions");
+        // Try to get error text first
+        const errorText = await response.text();
+        let errorMessage = "Failed to assign questions";
+
+        try {
+          // Try to parse error text as JSON
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorMessage;
+        } catch (parseError) {
+          // If parsing fails, use the raw text (truncated if too long)
+          errorMessage =
+            errorText.length > 100
+              ? `${errorText.substring(0, 100)}...`
+              : errorText;
+        }
+
+        throw new Error(errorMessage);
       }
+
+      // If response is OK, then parse JSON
+      const data = await response.json();
 
       // Store user ID in localStorage for the session
       localStorage.setItem("userId", data.userId);
@@ -90,7 +108,23 @@ export default function HomePage() {
       // Navigate to questions page
       router.push("/questions");
     } catch (err) {
+      console.error("Form submission error:", err);
       setError(err instanceof Error ? err.message : "An error occurred");
+
+      // Try a diagnostics API call to check AWS credentials
+      try {
+        const diagResponse = await fetch("/api/test-aws");
+        const diagData = await diagResponse.json();
+        console.log("AWS Diagnostics:", diagData);
+
+        if (!diagData.success) {
+          setError(
+            `AWS Configuration Error: ${diagData.error || "Unknown error"}`,
+          );
+        }
+      } catch (diagErr) {
+        console.error("Diagnostics API error:", diagErr);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -137,11 +171,11 @@ export default function HomePage() {
           <CardContent className="px-4 sm:px-6">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name" className="text-sm font-medium">
+                <Label htmlFor="input-name" className="text-sm font-medium">
                   Name <span className="text-destructive">*</span>
                 </Label>
                 <Input
-                  id="name"
+                  id="input-name"
                   type="text"
                   placeholder="Enter your full name"
                   value={formData.name}
@@ -152,11 +186,11 @@ export default function HomePage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-medium">
+                <Label htmlFor="input-email" className="text-sm font-medium">
                   Email <span className="text-destructive">*</span>
                 </Label>
                 <Input
-                  id="email"
+                  id="input-email"
                   type="email"
                   placeholder="Enter your email address"
                   value={formData.email}
@@ -167,11 +201,11 @@ export default function HomePage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="phone" className="text-sm font-medium">
+                <Label htmlFor="input-phone" className="text-sm font-medium">
                   Phone Number (Optional)
                 </Label>
                 <Input
-                  id="phone"
+                  id="input-phone"
                   type="tel"
                   placeholder="Enter your phone number"
                   value={formData.phone}
@@ -182,11 +216,14 @@ export default function HomePage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="profession" className="text-sm font-medium">
+                <Label
+                  htmlFor="input-profession"
+                  className="text-sm font-medium"
+                >
                   Medical Profession <span className="text-destructive">*</span>
                 </Label>
                 <Input
-                  id="profession"
+                  id="input-profession"
                   type="text"
                   placeholder="e.g., Cardiologist, Emergency Medicine, Internal Medicine"
                   value={formData.profession}
@@ -200,7 +237,7 @@ export default function HomePage() {
 
               <div className="space-y-2">
                 <Label
-                  htmlFor="clinicalExperience"
+                  htmlFor="select-clinical-experience"
                   className="text-sm font-medium"
                 >
                   Years of Clinical Experience (Optional)
@@ -212,7 +249,7 @@ export default function HomePage() {
                   }
                   disabled={isLoading}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="select-clinical-experience">
                     <SelectValue placeholder="Select experience range" />
                   </SelectTrigger>
                   <SelectContent>
@@ -225,7 +262,10 @@ export default function HomePage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="aiExposure" className="text-sm font-medium">
+                <Label
+                  htmlFor="select-ai-exposure"
+                  className="text-sm font-medium"
+                >
                   Prior Exposure to AI Tools (Optional)
                 </Label>
                 <Select
@@ -235,7 +275,7 @@ export default function HomePage() {
                   }
                   disabled={isLoading}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="select-ai-exposure">
                     <SelectValue placeholder="Select AI exposure level" />
                   </SelectTrigger>
                   <SelectContent>
