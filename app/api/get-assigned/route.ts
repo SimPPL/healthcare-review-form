@@ -1,6 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { dynamoDb, RESPONSES_TABLE, DATASET_TABLE } from "@/lib/dynamo";
+import {
+  getDynamoDbClient,
+  RESPONSES_TABLE,
+  DATASET_TABLE,
+} from "../_lib/dynamoDb";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
+import { Question, UserResponse, QuestionAssignment } from "@/types";
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,8 +23,11 @@ export async function GET(request: NextRequest) {
     console.log(`Fetching assigned questions for user_id: ${userId}`);
 
     // Fetch user response record
-    let userResult;
+    let userResult: { Item?: any };
     try {
+      // Initialize DynamoDB client for this request
+      const dynamoDb = getDynamoDbClient();
+
       const userCommand = new GetCommand({
         TableName: RESPONSES_TABLE,
         Key: { user_id: userId },
@@ -46,12 +54,16 @@ export async function GET(request: NextRequest) {
         `User record has no questions: ${JSON.stringify(userRecord)}`,
       );
     } else {
-      for (const [questionId, questionData] of Object.entries(
-        userRecord.questions,
-      )) {
+      for (const [
+        questionId,
+        questionData,
+      ] of Object.entries<QuestionAssignment>(userRecord.questions)) {
         let rubrics: string[] = [];
 
         try {
+          // Get DynamoDB client for this operation
+          const dynamoDb = getDynamoDbClient();
+
           const datasetResult = await dynamoDb.send(
             new GetCommand({
               TableName: DATASET_TABLE,
@@ -78,17 +90,30 @@ export async function GET(request: NextRequest) {
           console.log(`Question ${questionId} has no user answer yet`);
         }
 
+        // Cast questionData to QuestionAssignment type
+        const typedQuestionData = questionData as QuestionAssignment;
+
+        // Create response object with proper typing
         questions.push({
+          // Required fields from UserResponse
+          user_id: userId,
+          user_name: userRecord.user_name || "",
+          user_profession: userRecord.user_profession || "",
+          email: userRecord.email || "",
+          assigned_at:
+            typedQuestionData.assigned_at || new Date().toISOString(),
+
+          // Question fields
           question_id: questionId,
-          question_text: questionData.question_text,
-          llm_response: questionData.llm_response,
-          status: questionData.status || "pending",
+          question_text: typedQuestionData.question_text,
+          llm_response: typedQuestionData.llm_response,
+          status: typedQuestionData.status || "assigned",
           user_answer: userAnswer,
           rating: userRecord.ratings?.[questionId] || null,
           rubrics,
-          rubric_scores: questionData.rubric_scores || {},
-          axis_scores: questionData.axis_scores || {},
-          classification: questionData.classification || "",
+          rubric_scores: typedQuestionData.rubric_scores || {},
+          axis_scores: typedQuestionData.axis_scores || {},
+          classification: typedQuestionData.classification || "",
         });
       }
     }

@@ -1,25 +1,54 @@
-import { type NextRequest, NextResponse } from "next/server";
-import { getDynamoDbStatus } from "@/lib/server/aws";
+import { NextResponse } from "next/server";
 
-export async function GET(request: NextRequest) {
+/**
+ * Simple API route to check AWS environment variables
+ * Does not attempt to initialize actual AWS services
+ */
+export async function GET() {
   try {
-    // Use our server-side helper to check DynamoDB status
-    const dynamoStatus = await getDynamoDbStatus();
+    // Check environment variables without exposing actual values
+    const envVars = {
+      MY_APP_AWS_REGION: process.env.MY_APP_AWS_REGION || "Not set",
+      MY_APP_AWS_ACCESS_KEY_ID: process.env.MY_APP_AWS_ACCESS_KEY_ID
+        ? `Set (length: ${process.env.MY_APP_AWS_ACCESS_KEY_ID.length})`
+        : "Not set",
+      MY_APP_AWS_SECRET_ACCESS_KEY: process.env.MY_APP_AWS_SECRET_ACCESS_KEY
+        ? `Set (length: ${process.env.MY_APP_AWS_SECRET_ACCESS_KEY.length})`
+        : "Not set",
+      DATASET_TABLE: process.env.DATASET_TABLE || "Not set",
+      RESPONSES_TABLE: process.env.RESPONSES_TABLE || "Not set",
+    };
 
-    return NextResponse.json({
-      success: true,
-      environment: dynamoStatus.environment,
-      clientTest: dynamoStatus.clientTest,
-      tablesExist: dynamoStatus.tablesExist,
-      message: "Diagnostics successful",
-    });
-  } catch (error) {
-    return NextResponse.json(
+    // Return simple JSON response with explicit headers
+    return new NextResponse(
+      JSON.stringify({
+        success: true,
+        environment: envVars,
+        timestamp: new Date().toISOString(),
+      }),
       {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        },
+      }
+    );
+  } catch (error) {
+    console.error("Error in test-aws route:", error);
+
+    return new NextResponse(
+      JSON.stringify({
         success: false,
         error: error instanceof Error ? error.message : String(error),
-      },
-      { status: 500 },
+      }),
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        },
+      }
     );
   }
 }

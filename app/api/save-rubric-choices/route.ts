@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { dynamoDb, RESPONSES_TABLE } from "@/lib/dynamo";
+import { getDynamoDbClient, RESPONSES_TABLE } from "../_lib/dynamoDb";
 import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { ClassificationData, UserResponseRecord } from "@/types";
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,6 +23,14 @@ export async function POST(request: NextRequest) {
       feedback,
       answers,
       ratings,
+    }: {
+      userId: string;
+      selectedQualities: Record<string, string[]>;
+      qualityCategories?: Record<string, Record<string, string>>;
+      editedQualities?: Record<string, string>;
+      feedback?: Record<string, string>;
+      answers?: Record<string, any>;
+      ratings?: Record<string, number>;
     } = body;
 
     if (!userId) {
@@ -51,7 +60,7 @@ export async function POST(request: NextRequest) {
         editedQualities: editedQualities || {},
         feedback: feedback || {},
         completed_at: new Date().toISOString(),
-      },
+      } as ClassificationData,
       ":status": "classification_completed",
       ":updatedAt": new Date().toISOString(),
     };
@@ -67,6 +76,9 @@ export async function POST(request: NextRequest) {
       updateExpression += ", ratings = :ratings";
       expressionAttributeValues[":ratings"] = ratings;
     }
+
+    // Initialize DynamoDB client for this request
+    const dynamoDb = getDynamoDbClient();
 
     const updateCommand = new UpdateCommand({
       TableName: RESPONSES_TABLE,

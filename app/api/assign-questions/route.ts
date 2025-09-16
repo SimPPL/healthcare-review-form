@@ -1,14 +1,23 @@
 import { type NextRequest, NextResponse } from "next/server";
+import {
+  getDynamoDbClient,
+  DATASET_TABLE,
+  RESPONSES_TABLE,
+} from "../_lib/dynamoDb";
+import { ScanCommand, UpdateCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { v4 as uuidv4 } from "uuid";
 import {
-  type QuestionItem,
-  type QuestionAssignment,
-  type UserResponseItem,
-  type UserInfo,
-  getAvailableQuestions,
-  incrementQuestionUsage,
-  createUserResponse,
-} from "@/lib/server/aws";
+  Question,
+  QuestionAssignment,
+  UserInfo,
+  UserResponseRecord,
+} from "@/types";
+
+// Use Question type from types/index.ts
+
+// Use QuestionAssignment type from types/index.ts
+
+// Use UserResponseRecord type from types/index.ts
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,7 +31,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { userInfo } = body;
+    const { userInfo }: { userInfo: UserInfo } = body;
     if (!userInfo) {
       return NextResponse.json(
         { error: "userInfo is required" },
@@ -42,20 +51,38 @@ export async function POST(request: NextRequest) {
 
     const userId = uuidv4();
 
-    let availableQuestions: QuestionItem[] = [];
+    let scanResult;
     try {
-      console.log("Getting available questions");
-      availableQuestions = await getAvailableQuestions(20);
-      console.log("Available questions count:", availableQuestions.length);
+      console.log("Scanning DynamoDB table:", DATASET_TABLE);
+      console.log("AWS Region:", process.env.MY_APP_AWS_REGION);
+      // Initialize DynamoDB client for this request
+      const dynamoDb = getDynamoDbClient();
+      console.log("DynamoDB Client:", "Initialized");
+
+      const scanCommand = new ScanCommand({
+        TableName: DATASET_TABLE,
+        FilterExpression: "times_answered < target_evaluations",
+      });
+      scanResult = await dynamoDb.send(scanCommand);
     } catch (error) {
-      console.error("Error getting available questions:", error);
+      console.error("Error scanning dataset table:", error);
       return NextResponse.json(
         {
           error: `Database connection failed: ${error instanceof Error ? error.message : String(error)}. Please check your AWS configuration.`,
+          details: {
+            table: DATASET_TABLE,
+            region: process.env.MY_APP_AWS_REGION,
+            hasCredentials:
+              !!process.env.MY_APP_AWS_ACCESS_KEY_ID &&
+              !!process.env.MY_APP_AWS_SECRET_ACCESS_KEY,
+          },
         },
         { status: 500 },
       );
     }
+
+    const availableQuestions: Question[] = (scanResult.Items ||
+      []) as Question[];
 
     if (availableQuestions.length === 0) {
       return NextResponse.json(
@@ -67,7 +94,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const uniqueQuestions: QuestionItem[] = [];
+    const uniqueQuestions: Question[] = [];
     const seenQuestionIds = new Set<string>();
 
     for (const question of availableQuestions) {
@@ -87,7 +114,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const assignedQuestions: QuestionItem[] = [];
+    const assignedQuestions: Question[] = [];
     const processedQuestionIds: string[] = [];
 
     console.log(
@@ -108,7 +135,20 @@ export async function POST(request: NextRequest) {
 
       try {
         // Update times_answered in dataset table
-        await incrementQuestionUsage(question.question_id);
+        const updateCommand = new UpdateCommand({
+          TableName: DATASET_TABLE,
+          Key: { question_id: question.question_id },
+          UpdateExpression:
+            "SET times_answered = if_not_exists(times_answered, :zero) + :inc",
+          ExpressionAttributeValues: {
+            ":inc": 1,
+            ":zero": 0,
+          },
+        });
+
+        // Get DynamoDB client
+        const dynamoDb = getDynamoDbClient();
+        await dynamoDb.send(updateCommand);
         processedQuestionIds.push(question.question_id);
         console.log(`[v0] Updated question ${question.question_id}`);
       } catch (error) {
@@ -143,7 +183,7 @@ export async function POST(request: NextRequest) {
 
     // Create single user record with all questions
     if (Object.keys(questionsMap).length > 0) {
-      const userResponseItem: UserResponseItem = {
+      const userResponseItem: UserResponseRecord = {
         user_id: userId,
         user_name: name,
         user_profession: profession,
@@ -159,7 +199,14 @@ export async function POST(request: NextRequest) {
       };
 
       try {
-        await createUserResponse(userResponseItem);
+        const putCommand = new PutCommand({
+          TableName: RESPONSES_TABLE,
+          Item: userResponseItem,
+        });
+
+        // Get DynamoDB client
+        const dynamoDb = getDynamoDbClient();
+        await dynamoDb.send(putCommand);
         console.log(`[v0] Created user response record for ${userId}`);
       } catch (error) {
         console.error(`[v0] Error creating user response record:`, error);
@@ -193,10 +240,26 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error assigning questions:", error);
+    // Check for missing environment variables
+    const missingVars = [];
+    if (!process.env.MY_APP_AWS_REGION) missingVars.push("MY_APP_AWS_REGION");
+    if (!process.env.MY_APP_AWS_ACCESS_KEY_ID)
+      missingVars.push("MY_APP_AWS_ACCESS_KEY_ID");
+    if (!process.env.MY_APP_AWS_SECRET_ACCESS_KEY)
+      missingVars.push("MY_APP_AWS_SECRET_ACCESS_KEY");
+    if (!process.env.DATASET_TABLE) missingVars.push("DATASET_TABLE");
+    if (!process.env.RESPONSES_TABLE) missingVars.push("RESPONSES_TABLE");
 
     return NextResponse.json(
       {
         error: `Internal server error: ${error instanceof Error ? error.message : String(error)}`,
+        details: {
+          missingEnvironmentVariables:
+            missingVars.length > 0 ? missingVars : undefined,
+          region: process.env.MY_APP_AWS_REGION || "Not set",
+          datasetTable: process.env.DATASET_TABLE || "Not set",
+          responsesTable: process.env.RESPONSES_TABLE || "Not set",
+        },
       },
       { status: 500 },
     );
