@@ -1,50 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { dynamoDb, DATASET_TABLE, RESPONSES_TABLE } from "@/lib/dynamo";
-import { ScanCommand, UpdateCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { v4 as uuidv4 } from "uuid";
-
-type QuestionItem = {
-  question_id: string;
-  question_text: string;
-  llm_response: string;
-  answer?: string;
-  answer_hindi?: string;
-  answer_marathi?: string;
-  axis_scores?: Record<string, number>; // e.g., { Accuracy: 0.9, Completeness: 0.8 }
-  classification?: string;
-  medical_quality_score?: number;
-  references?: string[];
-  rubric_scores?: Record<string, number>; // rubric_name -> score
-  rubrics?: string[];
-  target_evaluations?: number;
-  theme?: string;
-  times_answered?: number;
-};
-
-type QuestionAssignment = {
-  question_text: string;
-  llm_response: string;
-  answer?: string;
-  answer_hindi?: string;
-  answer_marathi?: string;
-  status: string;
-  assigned_at: string;
-};
-
-type UserResponseItem = {
-  user_id: string;
-  user_name: string;
-  user_profession: string;
-  email: string;
-  phone?: string;
-  clinical_experience: string;
-  ai_exposure: string;
-  questions: Record<string, QuestionAssignment>;
-  answers: Record<string, Partial<QuestionItem>>; // now includes extra fields
-  ratings: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-};
+import {
+  type QuestionItem,
+  type QuestionAssignment,
+  type UserResponseItem,
+  type UserInfo,
+  getAvailableQuestions,
+  incrementQuestionUsage,
+  createUserResponse,
+} from "@/lib/server/aws";
 
 export async function POST(request: NextRequest) {
   try {
@@ -78,40 +42,20 @@ export async function POST(request: NextRequest) {
 
     const userId = uuidv4();
 
-    let scanResult;
+    let availableQuestions: QuestionItem[] = [];
     try {
-      console.log("Scanning DynamoDB table:", DATASET_TABLE);
-      console.log("AWS Region:", process.env.MY_APP_AWS_REGION);
-      console.log(
-        "DynamoDB Client:",
-        !!dynamoDb ? "Initialized" : "Failed to initialize",
-      );
-
-      const scanCommand = new ScanCommand({
-        TableName: DATASET_TABLE,
-        FilterExpression: "times_answered < target_evaluations",
-      });
-      scanResult = await dynamoDb.send(scanCommand);
-      console.log("Scan result items count:", scanResult.Items?.length || 0);
+      console.log("Getting available questions");
+      availableQuestions = await getAvailableQuestions(20);
+      console.log("Available questions count:", availableQuestions.length);
     } catch (error) {
-      console.error("Error scanning dataset table:", error);
+      console.error("Error getting available questions:", error);
       return NextResponse.json(
         {
           error: `Database connection failed: ${error instanceof Error ? error.message : String(error)}. Please check your AWS configuration.`,
-          details: {
-            table: DATASET_TABLE,
-            region: process.env.MY_APP_AWS_REGION,
-            hasCredentials:
-              !!process.env.MY_APP_AWS_ACCESS_KEY_ID &&
-              !!process.env.MY_APP_AWS_SECRET_ACCESS_KEY,
-          },
         },
         { status: 500 },
       );
     }
-
-    const availableQuestions: QuestionItem[] = (scanResult.Items ||
-      []) as QuestionItem[];
 
     if (availableQuestions.length === 0) {
       return NextResponse.json(
@@ -164,18 +108,7 @@ export async function POST(request: NextRequest) {
 
       try {
         // Update times_answered in dataset table
-        const updateCommand = new UpdateCommand({
-          TableName: DATASET_TABLE,
-          Key: { question_id: question.question_id },
-          UpdateExpression:
-            "SET times_answered = if_not_exists(times_answered, :zero) + :inc",
-          ExpressionAttributeValues: {
-            ":inc": 1,
-            ":zero": 0,
-          },
-        });
-
-        await dynamoDb.send(updateCommand);
+        await incrementQuestionUsage(question.question_id);
         processedQuestionIds.push(question.question_id);
         console.log(`[v0] Updated question ${question.question_id}`);
       } catch (error) {
@@ -226,12 +159,7 @@ export async function POST(request: NextRequest) {
       };
 
       try {
-        const putCommand = new PutCommand({
-          TableName: RESPONSES_TABLE,
-          Item: userResponseItem,
-        });
-
-        await dynamoDb.send(putCommand);
+        await createUserResponse(userResponseItem);
         console.log(`[v0] Created user response record for ${userId}`);
       } catch (error) {
         console.error(`[v0] Error creating user response record:`, error);
@@ -265,26 +193,10 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error assigning questions:", error);
-    // Check for missing environment variables
-    const missingVars = [];
-    if (!process.env.MY_APP_AWS_REGION) missingVars.push("MY_APP_AWS_REGION");
-    if (!process.env.MY_APP_AWS_ACCESS_KEY_ID)
-      missingVars.push("MY_APP_AWS_ACCESS_KEY_ID");
-    if (!process.env.MY_APP_AWS_SECRET_ACCESS_KEY)
-      missingVars.push("MY_APP_AWS_SECRET_ACCESS_KEY");
-    if (!process.env.DATASET_TABLE) missingVars.push("DATASET_TABLE");
-    if (!process.env.RESPONSES_TABLE) missingVars.push("RESPONSES_TABLE");
 
     return NextResponse.json(
       {
         error: `Internal server error: ${error instanceof Error ? error.message : String(error)}`,
-        details: {
-          missingEnvironmentVariables:
-            missingVars.length > 0 ? missingVars : undefined,
-          region: process.env.MY_APP_AWS_REGION || "Not set",
-          datasetTable: process.env.DATASET_TABLE || "Not set",
-          responsesTable: process.env.RESPONSES_TABLE || "Not set",
-        },
       },
       { status: 500 },
     );

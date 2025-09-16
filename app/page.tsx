@@ -23,6 +23,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
+import { assignQuestions, testAwsConnection } from "@/lib/client/api";
 
 export default function HomePage() {
   const router = useRouter();
@@ -60,46 +61,15 @@ export default function HomePage() {
     setError("");
 
     try {
-      const response = await fetch("/api/assign-questions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userInfo: {
-            name: formData.name.trim(),
-            profession: formData.profession.trim(),
-            email: formData.email.trim(),
-            phone: formData.phone.trim(),
-            clinicalExperience: formData.clinicalExperience,
-            aiExposure: formData.aiExposure,
-          },
-        }),
+      // Use the client API helper
+      const data = await assignQuestions({
+        name: formData.name.trim(),
+        profession: formData.profession.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+        clinicalExperience: formData.clinicalExperience,
+        aiExposure: formData.aiExposure,
       });
-
-      // Check if response is OK before trying to parse JSON
-      if (!response.ok) {
-        // Try to get error text first
-        const errorText = await response.text();
-        let errorMessage = "Failed to assign questions";
-
-        try {
-          // Try to parse error text as JSON
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.error || errorMessage;
-        } catch (parseError) {
-          // If parsing fails, use the raw text (truncated if too long)
-          errorMessage =
-            errorText.length > 100
-              ? `${errorText.substring(0, 100)}...`
-              : errorText;
-        }
-
-        throw new Error(errorMessage);
-      }
-
-      // If response is OK, then parse JSON
-      const data = await response.json();
 
       // Store user ID in localStorage for the session
       localStorage.setItem("userId", data.userId);
@@ -288,7 +258,9 @@ export default function HomePage() {
 
               {error && (
                 <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
+                  <AlertDescription
+                    dangerouslySetInnerHTML={{ __html: error }}
+                  />
                 </Alert>
               )}
 
