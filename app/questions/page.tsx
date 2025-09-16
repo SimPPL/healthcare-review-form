@@ -42,7 +42,7 @@ export default function QuestionsPage() {
   const [userName, setUserName] = useState<string | null>(null);
   const [showBackConfirm, setShowBackConfirm] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
-  const [questionsPerPage, setQuestionsPerPage] = useState(1);
+  const [questionsPerPage, setQuestionsPerPage] = useState(3);
   const [wordCounts, setWordCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {

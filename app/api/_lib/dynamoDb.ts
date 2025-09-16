@@ -6,27 +6,37 @@ import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
  * This function is meant to be used ONLY in server-side contexts (API routes)
  */
 export function getDynamoDbClient() {
-  // Check for required environment variables
-  if (!process.env.MY_APP_AWS_REGION) {
-    throw new Error("MY_APP_AWS_REGION environment variable is required");
+  // Get region from either custom or standard environment variable
+  const region = process.env.MY_APP_AWS_REGION || process.env.AWS_REGION;
+  if (!region) {
+    throw new Error("AWS region is required (MY_APP_AWS_REGION or AWS_REGION)");
   }
-  if (!process.env.MY_APP_AWS_ACCESS_KEY_ID) {
+
+  // Get access key from either custom or standard environment variable
+  const accessKeyId =
+    process.env.MY_APP_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
+  if (!accessKeyId) {
     throw new Error(
-      "MY_APP_AWS_ACCESS_KEY_ID environment variable is required",
-    );
-  }
-  if (!process.env.MY_APP_AWS_SECRET_ACCESS_KEY) {
-    throw new Error(
-      "MY_APP_AWS_SECRET_ACCESS_KEY environment variable is required",
+      "AWS access key ID is required (MY_APP_AWS_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID)",
     );
   }
 
-  // Initialize the DynamoDB client
+  // Get secret key from either custom or standard environment variable
+  const secretAccessKey =
+    process.env.MY_APP_AWS_SECRET_ACCESS_KEY ||
+    process.env.AWS_SECRET_ACCESS_KEY;
+  if (!secretAccessKey) {
+    throw new Error(
+      "AWS secret access key is required (MY_APP_AWS_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY)",
+    );
+  }
+
+  // Initialize the DynamoDB client with the available credentials
   const client = new DynamoDBClient({
-    region: process.env.MY_APP_AWS_REGION,
+    region,
     credentials: {
-      accessKeyId: process.env.MY_APP_AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.MY_APP_AWS_SECRET_ACCESS_KEY,
+      accessKeyId,
+      secretAccessKey,
     },
   });
 
@@ -34,7 +44,7 @@ export function getDynamoDbClient() {
   return DynamoDBDocumentClient.from(client);
 }
 
-// Table names are safe to export as constants
+// Table names are safe to export as constants - use either custom or default values
 export const DATASET_TABLE = process.env.DATASET_TABLE || "ai4health-dataset";
 export const RESPONSES_TABLE =
   process.env.RESPONSES_TABLE || "ai4health-responses";

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 
 export default function DebugPage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -67,22 +68,75 @@ export default function DebugPage() {
             <div className="space-y-4">
               <h3 className="text-lg font-medium">Environment Variables</h3>
 
-              <div className="bg-muted p-4 rounded-md overflow-auto">
-                <pre className="text-sm whitespace-pre-wrap">
+              <div className="bg-muted p-4 rounded-md mb-4">
+                <h4 className="text-sm font-medium mb-2">
+                  Custom AWS Variables
+                </h4>
+                <ul className="list-disc pl-5 space-y-1">
+                  {Object.entries(awsTestResult.environment || {}).map(
+                    ([key, value]) => (
+                      <li key={key} className="flex items-start">
+                        <span className="font-mono mr-2">{key}:</span>{" "}
+                        <Badge
+                          variant={
+                            value === "Not set" ? "destructive" : "default"
+                          }
+                        >
+                          {value as string}
+                        </Badge>
+                      </li>
+                    ),
+                  )}
+                </ul>
+              </div>
+
+              {awsTestResult.awsPrefixVars && (
+                <div className="bg-muted p-4 rounded-md mb-4">
+                  <h4 className="text-sm font-medium mb-2">
+                    Standard AWS Variables
+                  </h4>
+                  <ul className="list-disc pl-5 space-y-1">
+                    {Object.entries(awsTestResult.awsPrefixVars).map(
+                      ([key, value]) => (
+                        <li key={key} className="flex items-start">
+                          <span className="font-mono mr-2">{key}:</span>{" "}
+                          <Badge
+                            variant={
+                              value === "Not set" ? "destructive" : "success"
+                            }
+                          >
+                            {value as string}
+                          </Badge>
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                </div>
+              )}
+
+              {awsTestResult.awsConnectionTest && (
+                <div className="bg-muted p-4 rounded-md mb-4">
+                  <h4 className="text-sm font-medium mb-2">
+                    AWS Connection Test
+                  </h4>
+                  <p
+                    className={
+                      awsTestResult.awsConnectionTest.includes("failed")
+                        ? "text-red-500"
+                        : "text-green-500"
+                    }
+                  >
+                    {awsTestResult.awsConnectionTest}
+                  </p>
+                </div>
+              )}
+
+              <div className="bg-muted p-4 rounded-md overflow-auto mt-4">
+                <h4 className="text-sm font-medium mb-2">Raw Response</h4>
+                <pre className="text-xs whitespace-pre-wrap">
                   {JSON.stringify(awsTestResult, null, 2)}
                 </pre>
               </div>
-
-              <ul className="list-disc pl-5 space-y-1">
-                {Object.entries(awsTestResult.environment || {}).map(
-                  ([key, value]) => (
-                    <li key={key}>
-                      <span className="font-mono">{key}:</span>{" "}
-                      {value as string}
-                    </li>
-                  ),
-                )}
-              </ul>
             </div>
           )}
 
@@ -102,19 +156,29 @@ export default function DebugPage() {
               </h4>
               <ul className="list-disc pl-5 space-y-1 text-xs text-yellow-700 mt-1">
                 <li>
-                  Environment variables might need "Make available at runtime"
-                  option enabled
-                </li>
-                <li>
-                  Verify environment variables are applied to the correct branch
-                </li>
-                <li>
-                  Try removing and re-adding environment variables in the
+                  <strong>Runtime availability</strong>: Environment variables
+                  might need "Make available at runtime" option enabled in
                   Amplify Console
                 </li>
                 <li>
-                  Check AWS Amplify build logs for any environment variable
-                  errors
+                  <strong>Branch scope</strong>: Verify environment variables
+                  are applied to the correct branch
+                </li>
+                <li>
+                  <strong>Variable prefix</strong>: Check if you're using
+                  MY_APP_AWS_* or standard AWS_* variables
+                </li>
+                <li>
+                  <strong>Rebuild required</strong>: Try removing and re-adding
+                  environment variables in the Amplify Console, then rebuild
+                </li>
+                <li>
+                  <strong>Check logs</strong>: Examine AWS Amplify build logs
+                  for any environment variable errors or warnings
+                </li>
+                <li>
+                  <strong>Sensitive values</strong>: Ensure secret values don't
+                  contain special characters that need escaping
                 </li>
               </ul>
             </div>
