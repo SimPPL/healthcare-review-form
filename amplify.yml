@@ -1,0 +1,25 @@
+version: 1
+applications:
+  - frontend:
+      phases:
+        preBuild:
+          commands:
+            - npm ci
+        build:
+          commands:
+            - npm run build
+      artifacts:
+        baseDirectory: .next
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*
+          - .next/cache/**/*
+      buildSettings:
+        env:
+          variables:
+            AMPLIFY_MONOREPO_APP_ROOT: health-eval-feedback
+            AMPLIFY_DIFF_DEPLOY: false
+            AMPLIFY_DIFF_DEPLOY_ROOT: health-eval-feedback
+    appRoot: health-eval-feedback
