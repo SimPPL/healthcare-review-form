@@ -30,6 +30,7 @@ import {
   DragEndEvent,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
+import { useTourGuide } from "@/hooks/useTourGuide";
 
 // --- Helper Components for Drag-and-Drop ---
 
@@ -112,6 +113,7 @@ export default function ClassificationPage() {
   } | null>(null);
   const [feedback, setFeedback] = useState<string>("");
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const { startTour } = useTourGuide();
 
   // Rating and editing state
   const [rating, setRating] = useState<number | null>(null);
@@ -212,6 +214,48 @@ export default function ClassificationPage() {
       setIsLoading(false);
     }
   };
+
+  // Initialize tour guide
+  useEffect(() => {
+    if (currentQuestion && !isLoading) {
+      startTour(
+        {
+          steps: [
+            {
+              title: "Welcome to Classification",
+              content:
+                "Here you'll analyze the AI's response in three structured steps.",
+              target: "#classification-intro",
+            },
+            {
+              title: "Step 1: Rate the AI Response",
+              content:
+                "First, provide a numerical rating for the quality of the AI's clinical assessment.",
+              target: "#rating-section",
+            },
+            {
+              title: "Step 2: Select Key Qualities",
+              content:
+                "Choose 10-15 qualities that best characterize the AI's medical response.",
+              target: "#qualities-section",
+            },
+            {
+              title: "Step 3: Categorize Qualities",
+              content:
+                "Drag your selected qualities into appropriate medical categories to complete the analysis.",
+              target: "#categorization-section",
+            },
+          ],
+          completeOnFinish: true,
+          nextLabel: "Next",
+          prevLabel: "Back",
+          finishLabel: "Got it!",
+          closeButton: true,
+        },
+        "classification-tour-seen",
+      );
+    }
+  }, [currentQuestion, isLoading, startTour]);
 
   const countWords = (text: string): number => {
     return text.trim() === "" ? 0 : text.trim().split(/\s+/).length;
@@ -474,7 +518,10 @@ export default function ClassificationPage() {
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-800 dark:text-slate-100 mb-6">
             Medical Response Analysis
           </h1>
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
+          <div
+            id="classification-intro"
+            className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6"
+          >
             <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed max-w-6xl">
               As a medical expert, please help us analyze the AI's clinical
               responses. Complete the three steps below for this question:
@@ -640,7 +687,7 @@ export default function ClassificationPage() {
               </div>
 
               {/* Step 1: Rating Section */}
-              <div className="border-t pt-4 sm:pt-6">
+              <div id="rating-section" className="border-t pt-4 sm:pt-6">
                 <div className="space-y-3">
                   <h4 className="font-semibold text-foreground text-center text-lg sm:text-xl flex items-center justify-center gap-2 mb-4">
                     <div className="w-6 h-6 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-sm font-bold">
@@ -688,7 +735,7 @@ export default function ClassificationPage() {
 
               {/* Classification Section */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-12 mt-8 border-t-2 border-slate-200 dark:border-slate-700">
-                <div className="space-y-6">
+                <div id="qualities-section" className="space-y-6">
                   <div className="text-center lg:text-left">
                     <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 mb-3">
                       <div className="w-6 h-6 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-sm font-bold">
@@ -777,7 +824,7 @@ export default function ClassificationPage() {
                   </div>
                 </div>
 
-                <div className="space-y-6">
+                <div id="categorization-section" className="space-y-6">
                   <div className="text-center lg:text-left">
                     <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 mb-3">
                       <div className="w-6 h-6 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-sm font-bold">

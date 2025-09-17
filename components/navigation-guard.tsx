@@ -39,8 +39,24 @@ export function NavigationGuard({ children }: NavigationGuardProps) {
         // Clear session if user wants to start fresh
         localStorage.removeItem("userId");
         localStorage.removeItem("userName");
+        // Reset tour guides for new session
+        localStorage.removeItem("questions-tour-seen");
+        localStorage.removeItem("classification-tour-seen");
       }
     }
+
+    // Add tour reset functionality (for development/testing)
+    // Press Ctrl+Shift+T to reset tour guides
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === "T") {
+        localStorage.removeItem("questions-tour-seen");
+        localStorage.removeItem("classification-tour-seen");
+        console.log("Tour guides reset! Refresh the page to see tours again.");
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyPress);
+    return () => window.removeEventListener("keydown", handleKeyPress);
   }, [pathname, router]);
 
   return <>{children}</>;

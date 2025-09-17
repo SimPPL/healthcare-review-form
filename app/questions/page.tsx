@@ -15,6 +15,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, ArrowRight, ArrowLeft } from "lucide-react";
 import type { UserResponse } from "@/types";
+import { useTourGuide } from "@/hooks/useTourGuide";
 
 export default function QuestionsPage() {
   const router = useRouter();
@@ -29,6 +30,7 @@ export default function QuestionsPage() {
   const [userName, setUserName] = useState<string | null>(null);
   const [showBackConfirm, setShowBackConfirm] = useState(false);
   const [wordCount, setWordCount] = useState(0);
+  const { startTour } = useTourGuide();
 
   useEffect(() => {
     const storedUserId = localStorage.getItem("userId");
@@ -46,6 +48,42 @@ export default function QuestionsPage() {
 
   // Get current question
   const currentQuestion = questions[currentQuestionIndex];
+
+  // Initialize tour guide
+  useEffect(() => {
+    if (questions.length > 0 && currentQuestion) {
+      startTour(
+        {
+          steps: [
+            {
+              title: "Welcome to the Questions",
+              content:
+                "Here you'll provide your expert medical assessment for each AI response.",
+              target: "#question-card",
+            },
+            {
+              title: "Your Clinical Assessment",
+              content:
+                "Write your professional evaluation of the AI's response in this text area.",
+              target: "#answer-textarea",
+            },
+            {
+              title: "Continue to Classification",
+              content:
+                "After providing your assessment, click here to proceed to the detailed classification step.",
+              target: "#continue-button",
+            },
+          ],
+          completeOnFinish: true,
+          nextLabel: "Next",
+          prevLabel: "Back",
+          finishLabel: "Got it!",
+          closeButton: true,
+        },
+        "questions-tour-seen",
+      );
+    }
+  }, [questions, currentQuestion, startTour]);
 
   // Update progress when questions change
   useEffect(() => {
@@ -291,7 +329,10 @@ export default function QuestionsPage() {
               </Alert>
             )}
 
-            <Card className="shadow-lg border-t-4 border-[var(--color-purple-muted-border)] overflow-hidden">
+            <Card
+              id="question-card"
+              className="shadow-lg border-t-4 border-[var(--color-purple-muted-border)] overflow-hidden"
+            >
               <CardHeader className="px-4 sm:px-6 py-4 sm:py-6">
                 <div className="flex items-start space-x-3 sm:space-x-4 md:space-x-6">
                   <div className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-sm sm:text-lg md:text-xl font-bold">
@@ -314,6 +355,7 @@ export default function QuestionsPage() {
                   </span>
                 </div>
                 <Textarea
+                  id="answer-textarea"
                   placeholder="Share your medical expertise here (50-100 words recommended)..."
                   value={answer}
                   onChange={(e) => handleAnswerChange(e.target.value)}
@@ -345,6 +387,7 @@ export default function QuestionsPage() {
                 )}
 
                 <Button
+                  id="continue-button"
                   onClick={proceedToClassification}
                   disabled={!answer.trim() || isSaving}
                   className="bg-[var(--color-purple-muted)] hover:bg-[var(--color-purple-muted-hover)] text-white px-8"
