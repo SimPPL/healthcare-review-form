@@ -57,10 +57,20 @@ export async function GET(request: NextRequest) {
         `User record has no questions: ${JSON.stringify(userRecord)}`,
       );
     } else {
-      for (const [
-        questionId,
-        questionData,
-      ] of Object.entries<QuestionAssignment>(userRecord.questions)) {
+      // Safeguard: Limit to maximum 20 questions
+      const MAX_QUESTIONS = 20;
+      const questionEntries = Object.entries<QuestionAssignment>(
+        userRecord.questions,
+      );
+      const limitedQuestionEntries = questionEntries.slice(0, MAX_QUESTIONS);
+
+      if (questionEntries.length > MAX_QUESTIONS) {
+        console.warn(
+          `User ${userId} has ${questionEntries.length} questions assigned, limiting to ${MAX_QUESTIONS}`,
+        );
+      }
+
+      for (const [questionId, questionData] of limitedQuestionEntries) {
         let rubrics: string[] = [];
 
         try {

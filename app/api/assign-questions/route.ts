@@ -69,6 +69,27 @@ export async function POST(request: NextRequest) {
         console.log(
           `Found existing user with email ${email}, user_id: ${userId}`,
         );
+
+        // Check if user already has questions assigned
+        if (
+          existingUser.questions &&
+          Object.keys(existingUser.questions).length > 0
+        ) {
+          const existingQuestionsCount = Object.keys(
+            existingUser.questions,
+          ).length;
+          console.log(
+            `User ${userId} already has ${existingQuestionsCount} questions assigned`,
+          );
+
+          // Return immediately with existing assignment info
+          return NextResponse.json({
+            userId,
+            assignedQuestions: existingQuestionsCount,
+            message: `Welcome back! You have ${existingQuestionsCount} questions assigned.`,
+            isReturningUser: true,
+          });
+        }
       }
     } catch (error) {
       console.error("Error checking for existing user:", error);
@@ -121,11 +142,13 @@ export async function POST(request: NextRequest) {
     const uniqueQuestions: Question[] = [];
     const seenQuestionIds = new Set<string>();
 
+    // Ensure we only assign exactly 20 questions maximum
+    const MAX_QUESTIONS = 20;
     for (const question of shuffledQuestions) {
       if (!seenQuestionIds.has(question.question_id)) {
         seenQuestionIds.add(question.question_id);
         uniqueQuestions.push(question);
-        if (uniqueQuestions.length >= 20) break;
+        if (uniqueQuestions.length >= MAX_QUESTIONS) break;
       }
     }
 
@@ -208,31 +231,44 @@ export async function POST(request: NextRequest) {
 
     if (Object.keys(questionsMap).length > 0) {
       if (existingUser) {
-        // Update existing user with new questions
-        try {
-          const updateCommand = new UpdateCommand({
-            TableName: RESPONSES_TABLE,
-            Key: { user_id: userId },
-            UpdateExpression:
-              "SET questions = :questions, updated_at = :updatedAt, user_name = :name, user_profession = :profession",
-            ExpressionAttributeValues: {
-              ":questions": { ...existingUser.questions, ...questionsMap },
-              ":updatedAt": new Date().toISOString(),
-              ":name": name,
-              ":profession": profession,
-            },
-          });
+        // This should not happen anymore since we return early for existing users
+        // But keeping as fallback - only assign questions if user has none
+        const existingQuestionsCount = existingUser.questions
+          ? Object.keys(existingUser.questions).length
+          : 0;
 
-          const dynamoDb = getDynamoDbClient();
-          await dynamoDb.send(updateCommand);
-          console.log(`Updated existing user ${userId} with new questions`);
-        } catch (error) {
-          console.error(`Error updating existing user record:`, error);
-          return NextResponse.json(
-            {
-              error: "Failed to update user record. Please try again.",
-            },
-            { status: 500 },
+        if (existingQuestionsCount === 0) {
+          try {
+            const updateCommand = new UpdateCommand({
+              TableName: RESPONSES_TABLE,
+              Key: { user_id: userId },
+              UpdateExpression:
+                "SET questions = :questions, updated_at = :updatedAt, user_name = :name, user_profession = :profession",
+              ExpressionAttributeValues: {
+                ":questions": questionsMap, // Only assign new questions, don't merge
+                ":updatedAt": new Date().toISOString(),
+                ":name": name,
+                ":profession": profession,
+              },
+            });
+
+            const dynamoDb = getDynamoDbClient();
+            await dynamoDb.send(updateCommand);
+            console.log(
+              `Updated existing user ${userId} with ${Object.keys(questionsMap).length} questions`,
+            );
+          } catch (error) {
+            console.error(`Error updating existing user record:`, error);
+            return NextResponse.json(
+              {
+                error: "Failed to update user record. Please try again.",
+              },
+              { status: 500 },
+            );
+          }
+        } else {
+          console.log(
+            `User ${userId} already has ${existingQuestionsCount} questions, skipping assignment`,
           );
         }
       } else {
@@ -290,7 +326,7 @@ export async function POST(request: NextRequest) {
       userId,
       assignedQuestions: assignedQuestions.length,
       message: existingUser
-        ? `Welcome back! Added ${assignedQuestions.length} new questions to your existing set.`
+        ? `Welcome back! You have ${assignedQuestions.length} questions assigned.`
         : `Successfully assigned ${assignedQuestions.length} questions`,
       isReturningUser: !!existingUser,
     });
