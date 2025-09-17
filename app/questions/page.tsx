@@ -357,7 +357,7 @@ export default function QuestionsPage() {
                     </>
                   ) : (
                     <>
-                      Continue to Classification
+                      Next Page
                       <ArrowRight className="ml-2 h-5 w-5" />
                     </>
                   )}
