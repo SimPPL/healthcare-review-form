@@ -17,12 +17,7 @@ export function NavigationGuard({ children }: NavigationGuardProps) {
     const userId = localStorage.getItem("userId");
 
     // Protected routes that require a user session
-    const protectedRoutes = [
-      "/questions",
-      "/rating",
-      "/classification",
-      "/thank-you",
-    ];
+    const protectedRoutes = ["/questions", "/classification", "/thank-you"];
 
     // If on a protected route without userId, redirect to home
     if (

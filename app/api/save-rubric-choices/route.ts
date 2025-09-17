@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
       feedback,
       answers,
       ratings,
+      answerEditHistory,
     }: {
       userId: string;
       selectedQualities: Record<string, string[]>;
@@ -31,6 +32,14 @@ export async function POST(request: NextRequest) {
       feedback?: Record<string, string>;
       answers?: Record<string, any>;
       ratings?: Record<string, number>;
+      answerEditHistory?: Record<
+        string,
+        Array<{
+          original_answer: string;
+          edited_answer: string;
+          edited_at: string;
+        }>
+      >;
     } = body;
 
     if (!userId) {
@@ -58,6 +67,7 @@ export async function POST(request: NextRequest) {
         qualityCategories: qualityCategories || {},
         editedQualities: editedQualities || {},
         feedback: feedback || {},
+        answerEditHistory: answerEditHistory || {},
         completed_at: new Date().toISOString(),
       } as ClassificationData,
       ":status": "classification_completed",
@@ -101,6 +111,12 @@ export async function POST(request: NextRequest) {
     }
     if (ratings) {
       console.log("Ratings saved:", Object.keys(ratings).length);
+    }
+    if (answerEditHistory) {
+      console.log(
+        "Answer edits tracked:",
+        Object.keys(answerEditHistory).length,
+      );
     }
 
     return NextResponse.json({

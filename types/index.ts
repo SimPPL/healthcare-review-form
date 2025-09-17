@@ -134,6 +134,14 @@ export interface ClassificationData {
   qualityCategories: Record<string, Record<string, string>>; // questionId -> rubric -> category
   editedQualities: Record<string, string>; // original -> edited text
   feedback: Record<string, string>; // questionId -> feedback text
+  answerEditHistory?: Record<
+    string,
+    Array<{
+      original_answer: string;
+      edited_answer: string;
+      edited_at: string;
+    }>
+  >; // questionId -> edit history array
   completed_at: string; // When the classification was completed
   rubric_scores?: Record<string, Record<string, number>>; // questionId -> rubric -> score
   axis_scores?: Record<string, Record<string, number>>; // questionId -> axis -> score

@@ -13,37 +13,22 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Loader2,
-  ArrowRight,
-  Save,
-  ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { Loader2, ArrowRight, ArrowLeft } from "lucide-react";
 import type { UserResponse } from "@/types";
-import { useCallback } from "react";
 
 export default function QuestionsPage() {
   const router = useRouter();
   const [questions, setQuestions] = useState<UserResponse[]>([]);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [answer, setAnswer] = useState("");
+
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState<Record<string, boolean>>({});
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [showBackConfirm, setShowBackConfirm] = useState(false);
-  const [currentPage, setCurrentPage] = useState(0);
-  const [questionsPerPage, setQuestionsPerPage] = useState(3);
-  const [wordCounts, setWordCounts] = useState<Record<string, number>>({});
+  const [wordCount, setWordCount] = useState(0);
 
   useEffect(() => {
     const storedUserId = localStorage.getItem("userId");
@@ -58,6 +43,31 @@ export default function QuestionsPage() {
     setUserName(storedUserName);
     fetchQuestions(storedUserId);
   }, [router]);
+
+  // Get current question
+  const currentQuestion = questions[currentQuestionIndex];
+
+  // Update progress when questions change
+  useEffect(() => {
+    if (questions.length > 0) {
+      const completed = parseInt(
+        localStorage.getItem("currentQuestionIndex") || "0",
+      );
+      setCurrentQuestionIndex(completed);
+
+      // Load current question's data
+      if (questions[completed]) {
+        const questionId = questions[completed].question_id;
+        const storedAnswer = localStorage.getItem(`answer_${questionId}`);
+        const storedRating = localStorage.getItem(`rating_${questionId}`);
+
+        setAnswer(storedAnswer || "");
+        setWordCount(
+          storedAnswer ? storedAnswer.trim().split(/\s+/).length : 0,
+        );
+      }
+    }
+  }, [questions]);
 
   const fetchQuestions = async (userIdParam: string) => {
     try {
@@ -74,31 +84,7 @@ export default function QuestionsPage() {
         throw new Error("Invalid response format from server");
       }
 
-      // Process questions and check localStorage for saved answers
-      const updatedQuestions = data.questions.map((q: UserResponse) => {
-        const storedAnswer = localStorage.getItem(`answer_${q.question_id}`);
-        if (storedAnswer) {
-          return {
-            ...q,
-            user_answer: storedAnswer,
-            status: "answered" as const,
-          };
-        }
-        return q;
-      });
-
-      setQuestions(updatedQuestions);
-      const initialAnswers: Record<string, string> = {};
-      data.questions.forEach((q: UserResponse) => {
-        if (q.user_answer) {
-          initialAnswers[q.question_id] = q.user_answer;
-          setWordCounts((prev) => ({
-            ...prev,
-            [q.question_id]: countWords(q.user_answer || ""),
-          }));
-        }
-      });
-      setAnswers(initialAnswers);
+      setQuestions(data.questions);
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : "Failed to load questions";
@@ -108,120 +94,118 @@ export default function QuestionsPage() {
     }
   };
 
-  const saveAnswer = async (questionId: string, answer: string) => {
-    if (!answer.trim()) {
-      setError("Please provide an answer before saving");
+  const handleAnswerChange = (value: string) => {
+    setAnswer(value);
+    setWordCount(value.trim() === "" ? 0 : value.trim().split(/\s+/).length);
+    // Auto-save to localStorage
+    if (currentQuestion) {
+      localStorage.setItem(`answer_${currentQuestion.question_id}`, value);
+    }
+  };
+
+  const skipToNext = () => {
+    if (currentQuestionIndex < questions.length - 1) {
+      const nextIndex = currentQuestionIndex + 1;
+      setCurrentQuestionIndex(nextIndex);
+      localStorage.setItem("currentQuestionIndex", nextIndex.toString());
+
+      // Load next question's data
+      const nextQuestion = questions[nextIndex];
+      if (nextQuestion) {
+        const storedAnswer = localStorage.getItem(
+          `answer_${nextQuestion.question_id}`,
+        );
+        const storedRating = localStorage.getItem(
+          `rating_${nextQuestion.question_id}`,
+        );
+
+        setAnswer(storedAnswer || "");
+        setWordCount(
+          storedAnswer ? storedAnswer.trim().split(/\s+/).length : 0,
+        );
+      }
+      setError("");
+    }
+  };
+
+  const proceedToClassification = async () => {
+    if (!currentQuestion || !answer.trim()) {
+      setError("Please provide an answer before proceeding.");
       return;
     }
 
-    setIsSaving((prev) => ({ ...prev, [questionId]: true }));
+    setIsSaving(true);
     setError("");
 
     try {
-      // Save answer to localStorage instead of making API call
-      localStorage.setItem(`answer_${questionId}`, answer.trim());
+      // Save the answer
+      const saveAnswerResponse = await fetch("/api/save-answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          questionId: currentQuestion.question_id,
+          userAnswer: answer.trim(),
+        }),
+      });
 
-      // Update UI state
-      setQuestions((prev) =>
-        prev.map((q) =>
-          q.question_id === questionId
-            ? { ...q, user_answer: answer.trim(), status: "answered" as const }
-            : q,
-        ),
-      );
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to save answer";
-      setError(errorMessage);
-    } finally {
-      setIsSaving((prev) => ({ ...prev, [questionId]: false }));
-    }
-  };
-
-  const countWords = useCallback((text: string): number => {
-    return text.trim() === "" ? 0 : text.trim().split(/\s+/).length;
-  }, []);
-
-  const handleAnswerChange = (questionId: string, value: string) => {
-    setAnswers((prev) => ({ ...prev, [questionId]: value }));
-    setWordCounts((prev) => ({ ...prev, [questionId]: countWords(value) }));
-  };
-
-  const proceedToRating = () => {
-    // Check if any questions have been answered
-    const answeredQuestions = questions.filter(
-      (q) => q.status === "answered" || answers[q.question_id]?.trim(),
-    );
-    if (answeredQuestions.length === 0) {
-      setError("Please answer at least one question before proceeding.");
-      return;
-    }
-
-    // Save all current answers to localStorage before proceeding
-    questions.forEach((q) => {
-      const answer = answers[q.question_id];
-      if (answer?.trim()) {
-        localStorage.setItem(`answer_${q.question_id}`, answer.trim());
+      if (!saveAnswerResponse.ok) {
+        throw new Error("Failed to save answer");
       }
-    });
 
-    router.push("/rating");
+      // Save to localStorage
+      localStorage.setItem(
+        `answer_${currentQuestion.question_id}`,
+        answer.trim(),
+      );
+
+      // Store current question info for classification page
+      localStorage.setItem(
+        "currentQuestionForClassification",
+        JSON.stringify({
+          questionId: currentQuestion.question_id,
+          questionIndex: currentQuestionIndex,
+        }),
+      );
+
+      // Navigate to classification page for this specific question
+      router.push("/classification");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save data");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleBackClick = () => setShowBackConfirm(true);
   const confirmBack = () => {
     // Clear all localStorage items
     localStorage.clear();
     router.push("/");
   };
 
-  const totalPages = Math.ceil(questions.length / questionsPerPage);
-  const startIndex = currentPage * questionsPerPage;
-  const endIndex = startIndex + questionsPerPage;
-  const currentQuestions = questions.slice(startIndex, endIndex);
-
-  const goToNextPage = () => {
-    if (currentPage < totalPages - 1) setCurrentPage(currentPage + 1);
-  };
-
-  const goToPrevPage = () => {
-    if (currentPage > 0) setCurrentPage(currentPage - 1);
-  };
-
-  const handleQuestionsPerPageChange = (value: string) => {
-    setQuestionsPerPage(Number.parseInt(value));
-    setCurrentPage(0);
-  };
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex items-center justify-center">
-        <div className="flex items-center space-x-2">
-          <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin" />
-          <span className="text-sm sm:text-base">Loading questions...</span>
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-lg">Loading your questions...</p>
         </div>
       </div>
     );
   }
 
-  if (questions.length === 0 && !isLoading) {
+  if (questions.length === 0) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md text-center shadow-lg">
-          <CardHeader className="px-4 py-4 sm:px-6 sm:py-6">
-            <CardTitle className="text-lg sm:text-xl">
-              No Questions Assigned
-            </CardTitle>
-            <CardDescription className="text-xs sm:text-sm">
-              There are no questions for you to answer at this time.
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <CardTitle>No Questions Found</CardTitle>
+            <CardDescription>
+              No questions have been assigned to your account yet.
             </CardDescription>
           </CardHeader>
-          <CardContent className="px-4 pb-4 sm:px-6 sm:pb-6">
-            <Button
-              onClick={() => router.push("/")}
-              variant="outline"
-              className="text-xs sm:text-sm h-8 sm:h-9"
-            >
+          <CardContent className="text-center">
+            <Button onClick={() => router.push("/")} variant="outline">
               Return to Home
             </Button>
           </CardContent>
@@ -235,214 +219,153 @@ export default function QuestionsPage() {
       {showBackConfirm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <Card className="w-full max-w-md shadow-lg">
-            <CardHeader className="px-4 py-4 sm:px-6 sm:py-6">
-              <CardTitle className="text-lg sm:text-xl">
-                Are you sure?
+            <CardHeader className="text-center">
+              <CardTitle className="text-xl font-semibold text-foreground">
+                Confirm Exit
               </CardTitle>
-              <CardDescription className="text-xs sm:text-sm">
+              <CardDescription className="text-sm sm:text-base">
                 Your answers are saved, but you will need to log in again to
                 continue.
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex gap-x-2 px-4 pb-4 sm:px-6 sm:pb-6">
+            <CardContent className="flex flex-col sm:flex-row gap-3 justify-center">
               <Button
-                variant="outline"
                 onClick={() => setShowBackConfirm(false)}
-                className="flex-1 text-xs sm:text-sm h-8 sm:h-9"
+                variant="outline"
+                className="text-sm sm:text-base"
               >
-                Stay
+                Cancel
               </Button>
               <Button
                 onClick={confirmBack}
-                className="flex-1 bg-[var(--color-purple-muted)] hover:bg-[var(--color-purple-muted-hover)] text-white text-xs sm:text-sm h-8 sm:h-9"
+                variant="destructive"
+                className="text-sm sm:text-base"
               >
-                Go Back
+                Yes, Exit
               </Button>
             </CardContent>
           </Card>
         </div>
       )}
 
-      <div className="container mx-auto px-4 py-6 sm:py-8 max-w-4xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">
-              Medical Expert Evaluation
-            </h1>
-            <p className="text-sm sm:text-md text-muted-foreground mt-2">
-              Please share your expert opinion on the following clinical
-              questions. Aim for concise answers (ideally 50-100 words) that
-              reflect your professional expertise.
-            </p>
-          </div>
-          <Button
-            onClick={handleBackClick}
-            variant="outline"
-            size="sm"
-            className="self-start"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Home
-          </Button>
-        </div>
-
-        {userName && (
-          <p className="text-xs sm:text-sm text-muted-foreground mb-4 sm:mb-6">
-            Welcome back, <span className="font-medium">{userName}</span>
+      <div className="container mx-auto px-6 py-10 max-w-4xl">
+        <div className="mb-12">
+          <h1 className="text-4xl sm:text-5xl font-bold text-slate-800 dark:text-slate-100 mb-4">
+            Healthcare Expert Review
+          </h1>
+          <p className="text-lg text-slate-600 dark:text-slate-400">
+            Welcome, {userName}! Please provide your expert clinical assessment
+            for each AI response.
           </p>
-        )}
+        </div>
 
-        {error && (
-          <Alert variant="destructive" className="mb-6">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 p-3 sm:p-4 bg-slate-100 dark:bg-zinc-900 rounded-lg gap-3 sm:gap-0">
-          <div className="flex items-center space-x-2 sm:space-x-4">
-            <span className="text-xs sm:text-sm font-medium">
-              Questions per page:
-            </span>
-            <Select
-              value={questionsPerPage.toString()}
-              onValueChange={handleQuestionsPerPageChange}
-            >
-              <SelectTrigger className="w-16 sm:w-20 h-8 text-xs sm:text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">1</SelectItem>
-                <SelectItem value="3">3</SelectItem>
-                <SelectItem value="5">5</SelectItem>
-                <SelectItem value="10">10</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center space-x-2 sm:space-x-4">
-            <span className="text-xs sm:text-sm text-muted-foreground">
-              {startIndex + 1}-{Math.min(endIndex, questions.length)} of{" "}
-              {questions.length}
-            </span>
-            <div className="flex items-center space-x-1">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-7 w-7 sm:h-8 sm:w-8"
-                onClick={goToPrevPage}
-                disabled={currentPage === 0}
-              >
-                <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-7 w-7 sm:h-8 sm:w-8"
-                onClick={goToNextPage}
-                disabled={currentPage >= totalPages - 1}
-              >
-                <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4" />
-              </Button>
+        {currentQuestion && (
+          <>
+            {/* Progress indicator */}
+            <div className="mb-8 bg-slate-100 dark:bg-zinc-900 rounded-xl p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
+                  Progress: Question {currentQuestionIndex + 1} of{" "}
+                  {questions.length}
+                </h2>
+                <span className="text-sm text-muted-foreground">
+                  {Math.round(
+                    ((currentQuestionIndex + 1) / questions.length) * 100,
+                  )}
+                  % Complete
+                </span>
+              </div>
+              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3">
+                <div
+                  className="bg-[var(--color-purple-muted)] h-3 rounded-full transition-all duration-300 ease-out"
+                  style={{
+                    width: `${((currentQuestionIndex + 1) / questions.length) * 100}%`,
+                  }}
+                ></div>
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div className="space-y-8">
-          {currentQuestions.map((question, index) => {
-            const globalIndex = startIndex + index;
-            return (
-              <Card
-                key={question.question_id}
-                className="shadow-lg border-t-4 border-[var(--color-purple-muted-border)] overflow-hidden"
+            {error && (
+              <Alert variant="destructive" className="mb-6">
+                <AlertDescription className="text-sm">{error}</AlertDescription>
+              </Alert>
+            )}
+
+            <Card className="shadow-lg border-t-4 border-[var(--color-purple-muted-border)] overflow-hidden">
+              <CardHeader className="px-6 sm:px-5 py-6">
+                <div className="flex items-start space-x-4 sm:space-x-6">
+                  <div className="flex-shrink-0 w-12 h-12 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-xl font-bold">
+                    {currentQuestionIndex + 1}
+                  </div>
+                  <CardTitle className="text-xl sm:text-2xl leading-relaxed font-semibold text-slate-800 dark:text-slate-100">
+                    {currentQuestion.question_text}
+                  </CardTitle>
+                </div>
+              </CardHeader>
+
+              <CardContent className="space-y-8 p-6 sm:p-8">
+                {/* Answer Section */}
+                <div className="flex justify-between items-center">
+                  <label className="text-lg font-semibold text-slate-800 dark:text-slate-200">
+                    Your Clinical Assessment:
+                  </label>
+                  <span className="text-sm text-muted-foreground bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">
+                    {wordCount} words
+                  </span>
+                </div>
+                <Textarea
+                  placeholder="Share your medical expertise here (50-100 words recommended)..."
+                  value={answer}
+                  onChange={(e) => handleAnswerChange(e.target.value)}
+                  className="min-h-[160px] text-base resize-y bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-[var(--color-purple-muted-border)] leading-relaxed"
+                />
+              </CardContent>
+            </Card>
+
+            <div className="mt-12 flex justify-between items-center">
+              <Button
+                onClick={() => setShowBackConfirm(true)}
+                variant="outline"
+                size="lg"
               >
-                <CardHeader className="px-4 sm:px-6">
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-0">
-                    <div className="flex items-start space-x-3 sm:space-x-4">
-                      <div className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-base sm:text-lg font-bold mt-1">
-                        {globalIndex + 1}
-                      </div>
-                      <CardTitle className="text-base sm:text-xl leading-tight sm:leading-relaxed">
-                        {question.question_text}
-                      </CardTitle>
-                    </div>
-                    <Badge
-                      variant={
-                        question.status === "answered" ? "default" : "secondary"
-                      }
-                      className="self-start mt-2 sm:mt-0 text-xs"
-                    >
-                      {question.status === "answered" ? "Answered" : "Pending"}
-                    </Badge>
-                  </div>
-                </CardHeader>
+                <ArrowLeft className="mr-2 h-5 w-5" />
+                Back to Home
+              </Button>
 
-                <CardContent className="space-y-4 p-4 sm:p-6">
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <label
-                        htmlFor={`answer-${question.question_id}`}
-                        className="text-xs sm:text-sm font-medium text-foreground"
-                      >
-                        Your Clinical Assessment:
-                      </label>
-                      <span className="text-xs text-muted-foreground">
-                        {wordCounts[question.question_id] || 0} words
-                      </span>
-                    </div>
-                    <Textarea
-                      id={`answer-${question.question_id}`}
-                      placeholder="Share your medical expertise here (50-100 words recommended)..."
-                      value={answers[question.question_id] || ""}
-                      onChange={(e) =>
-                        handleAnswerChange(question.question_id, e.target.value)
-                      }
-                      className="min-h-[120px] sm:min-h-[150px] text-sm sm:text-base resize-y bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-[var(--color-purple-muted-border)]"
-                    />
-                  </div>
+              <div className="flex space-x-4">
+                {currentQuestionIndex < questions.length - 1 && (
+                  <Button
+                    onClick={skipToNext}
+                    variant="outline"
+                    size="lg"
+                    className="px-6"
+                  >
+                    Skip Question
+                  </Button>
+                )}
 
-                  <div className="flex justify-end">
-                    <Button
-                      onClick={() =>
-                        saveAnswer(
-                          question.question_id,
-                          answers[question.question_id] || "",
-                        )
-                      }
-                      disabled={
-                        !answers[question.question_id]?.trim() ||
-                        isSaving[question.question_id]
-                      }
-                      className="bg-[var(--color-purple-muted)] hover:bg-[var(--color-purple-muted-hover)] text-white text-xs sm:text-sm h-8 sm:h-9"
-                    >
-                      {isSaving[question.question_id] ? (
-                        <>
-                          <Loader2 className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                          Save Response
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-
-        <div className="mt-8 sm:mt-10 flex justify-center">
-          <Button
-            onClick={proceedToRating}
-            className="bg-[var(--color-purple-muted)] hover:bg-[var(--color-purple-muted-hover)] text-white text-sm sm:text-base"
-            size="lg"
-          >
-            Continue to AI Evaluation
-            <ArrowRight className="ml-1 sm:ml-2 h-3 w-3 sm:h-4 sm:w-4" />
-          </Button>
-        </div>
+                <Button
+                  onClick={proceedToClassification}
+                  disabled={!answer.trim() || isSaving}
+                  className="bg-[var(--color-purple-muted)] hover:bg-[var(--color-purple-muted-hover)] text-white px-8"
+                  size="lg"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      Continue to Classification
+                      <ArrowRight className="ml-2 h-5 w-5" />
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

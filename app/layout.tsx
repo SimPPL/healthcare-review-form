@@ -11,6 +11,10 @@ export const metadata: Metadata = {
   title: "Healthcare Review Form",
   description: "Evaluate AI responses to medical questions",
   generator: "v0.app",
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({

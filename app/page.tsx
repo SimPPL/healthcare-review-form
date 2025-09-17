@@ -23,6 +23,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
+import Image from "next/image";
 
 export default function HomePage() {
   const router = useRouter();
@@ -140,28 +141,15 @@ export default function HomePage() {
       <div className="w-full max-w-md mx-auto">
         <Card className="shadow-lg">
           <CardHeader className="text-center space-y-2 px-4 sm:px-6">
-            <div className="flex items-center justify-center mb-4">
-              <img
+            <div className="flex items-center justify-center mb-6">
+              <Image
                 src="/logo.png"
-                alt="Healthcare Review FormLogo"
+                alt="Healthcare Review Form"
+                width={48}
+                height={48}
                 className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg"
-                onError={(e) => {
-                  // Fallback to placeholder if logo not found
-                  e.currentTarget.style.display = "none";
-                  const sibling = e.currentTarget.nextElementSibling;
-                  if (sibling instanceof HTMLElement) {
-                    sibling.style.display = "flex";
-                  }
-                }}
+                priority
               />
-              <div
-                className="w-10 h-10 sm:w-12 sm:h-12 bg-primary rounded-lg flex items-center justify-center"
-                style={{ display: "none" }}
-              >
-                <span className="text-primary-foreground font-bold text-xs">
-                  HEF
-                </span>
-              </div>
             </div>
             <CardTitle className="text-xl sm:text-2xl font-semibold text-foreground">
               Healthcare Review Form

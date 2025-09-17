@@ -91,30 +91,38 @@ function CategoryDropzone({
 
 export default function ClassificationPage() {
   const router = useRouter();
-  const [questions, setQuestions] = useState<UserResponse[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState<UserResponse | null>(
+    null,
+  );
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [selectedQualities, setSelectedQualities] = useState<
-    Record<string, string[]>
-  >({});
+  // Single question state
+  const [selectedQualities, setSelectedQualities] = useState<string[]>([]);
   const [qualityCategories, setQualityCategories] = useState<
-    Record<string, Record<string, string>>
+    Record<string, string>
   >({});
-  const [editing, setEditing] = useState<
-    Record<string, { original: string; current: string } | null>
-  >({});
-  const [feedback, setFeedback] = useState<Record<string, string>>({});
-  const [expandedText, setExpandedText] = useState<
-    Record<
-      string,
-      { question?: boolean; userAnswer?: boolean; aiAnswer?: boolean }
-    >
-  >({});
+  const [editing, setEditing] = useState<{
+    original: string;
+    current: string;
+  } | null>(null);
+  const [feedback, setFeedback] = useState<string>("");
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+
+  // Rating and editing state
+  const [rating, setRating] = useState<number | null>(null);
+  const [isSavingRating, setIsSavingRating] = useState(false);
+  const [editingAnswer, setEditingAnswer] = useState(false);
+  const [editedAnswer, setEditedAnswer] = useState<string>("");
+  const [originalAnswer, setOriginalAnswer] = useState<string>("");
+  const [wordCounts, setWordCounts] = useState<{ user: number; ai: number }>({
+    user: 0,
+    ai: 0,
+  });
 
   const CATEGORIES = [
     "Accuracy",
@@ -128,20 +136,38 @@ export default function ClassificationPage() {
     try {
       const storedUserId = localStorage.getItem("userId");
       const storedUserName = localStorage.getItem("userName");
+
       if (!storedUserId) {
         router.push("/");
         return;
       }
       setUserId(storedUserId);
       setUserName(storedUserName || null);
-      fetchQuestions(storedUserId);
+
+      // Get current question info from localStorage
+      const currentQuestionInfo = localStorage.getItem(
+        "currentQuestionForClassification",
+      );
+      if (currentQuestionInfo) {
+        const { questionId, questionIndex } = JSON.parse(currentQuestionInfo);
+        setCurrentQuestionIndex(questionIndex);
+        fetchCurrentQuestion(storedUserId, questionId);
+      } else {
+        setError("No question selected for classification.");
+        setIsLoading(false);
+      }
     } catch (err) {
       setError("Failed to access user information.");
       setIsLoading(false);
     }
   }, [router]);
 
-  const fetchQuestions = async (userIdParam: string) => {
+  const fetchCurrentQuestion = async (
+    userIdParam: string,
+    questionId: string,
+  ) => {
+    setIsLoading(true);
+    setError("");
     try {
       const response = await fetch(`/api/get-assigned?user_id=${userIdParam}`);
       const data = await response.json();
@@ -149,138 +175,160 @@ export default function ClassificationPage() {
         throw new Error(data.error || "Invalid API response");
       }
 
-      // First, enhance questions with answers from localStorage
-      let enhancedQuestions = [...data.questions].map((q: UserResponse) => {
-        const storedAnswer = localStorage.getItem(`answer_${q.question_id}`);
-        if (storedAnswer && storedAnswer.trim()) {
-          return {
-            ...q,
-            user_answer: storedAnswer.trim(),
-            status: "answered" as const,
-          };
-        }
-        return q;
-      });
-
-      // Then filter to get only answered questions
-      const answeredQuestions = enhancedQuestions.filter((q: UserResponse) =>
-        q.user_answer?.trim(),
+      // Find the specific question
+      const question = data.questions.find(
+        (q: UserResponse) => q.question_id === questionId,
       );
+      if (!question) {
+        throw new Error("Question not found");
+      }
 
-      setQuestions(answeredQuestions);
-      const initialSelected: Record<string, string[]> = {};
-      const initialCategories: Record<string, Record<string, string>> = {};
-      answeredQuestions.forEach((q: UserResponse) => {
-        initialSelected[q.question_id] = [];
-        initialCategories[q.question_id] = {};
+      // Enhance with stored data
+      const storedAnswer = localStorage.getItem(`answer_${questionId}`);
+      const storedRating = localStorage.getItem(`rating_${questionId}`);
+
+      const enhancedQuestion = { ...question };
+      if (storedAnswer && storedAnswer.trim()) {
+        enhancedQuestion.user_answer = storedAnswer.trim();
+        enhancedQuestion.status = "answered" as const;
+      }
+      if (storedRating) {
+        enhancedQuestion.llm_rating = parseInt(storedRating, 10);
+      }
+
+      setCurrentQuestion(enhancedQuestion);
+
+      // Initialize rating and word counts
+      setRating(storedRating ? parseInt(storedRating, 10) : null);
+      setEditedAnswer(enhancedQuestion.user_answer || "");
+      setOriginalAnswer(enhancedQuestion.user_answer || "");
+      setWordCounts({
+        user: countWords(enhancedQuestion.user_answer || ""),
+        ai: countWords(enhancedQuestion.llm_response || ""),
       });
-      setSelectedQualities(initialSelected);
-      setQualityCategories(initialCategories);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load questions");
+      setError(err instanceof Error ? err.message : "Failed to load question");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const toggleTextExpansion = (
-    questionId: string,
-    type: "question" | "userAnswer" | "aiAnswer",
-  ) => {
-    setExpandedText((prev) => ({
-      ...prev,
-      [questionId]: { ...prev[questionId], [type]: !prev[questionId]?.[type] },
-    }));
+  const countWords = (text: string): number => {
+    return text.trim() === "" ? 0 : text.trim().split(/\s+/).length;
   };
 
-  const truncateText = (text: string, maxLength: number = 150) =>
-    text.length <= maxLength ? text : text.substring(0, maxLength) + "...";
+  const handleRatingClick = (ratingValue: number) => {
+    setRating(ratingValue);
+    setIsSavingRating(true);
 
-  const toggleQualitySelection = (questionId: string, quality: string) => {
+    try {
+      localStorage.setItem(
+        `rating_${currentQuestion?.question_id}`,
+        ratingValue.toString(),
+      );
+    } catch (err) {
+      console.error("Failed to save rating:", err);
+    } finally {
+      setIsSavingRating(false);
+    }
+  };
+
+  const handleSaveEditedAnswer = () => {
+    if (!currentQuestion || !editedAnswer.trim()) return;
+
+    localStorage.setItem(
+      `answer_${currentQuestion.question_id}`,
+      editedAnswer.trim(),
+    );
+
+    // Track answer edit if it changed
+    if (editedAnswer.trim() !== originalAnswer.trim()) {
+      const editHistory = {
+        original_answer: originalAnswer,
+        edited_answer: editedAnswer.trim(),
+        edited_at: new Date().toISOString(),
+      };
+      localStorage.setItem(
+        `answer_edit_${currentQuestion.question_id}`,
+        JSON.stringify(editHistory),
+      );
+    }
+
+    setCurrentQuestion((prev) =>
+      prev ? { ...prev, user_answer: editedAnswer.trim() } : null,
+    );
+    setWordCounts((prev) => ({ ...prev, user: countWords(editedAnswer) }));
+    setEditingAnswer(false);
+  };
+
+  const toggleQualitySelection = (quality: string) => {
     setSelectedQualities((prev) => {
-      const current = prev[questionId] || [];
-      const isSelected = current.includes(quality);
-      if (!isSelected && current.length >= 15) return prev;
-      const newSelection = isSelected
-        ? current.filter((q) => q !== quality)
-        : [...current, quality];
-      if (isSelected) {
+      if (prev.includes(quality)) {
+        // Remove from selected and from categories
         setQualityCategories((prevCat) => {
-          const newCats = { ...prevCat[questionId] };
-          delete newCats[quality];
-          return { ...prevCat, [questionId]: newCats };
+          const newCat = { ...prevCat };
+          delete newCat[quality];
+          return newCat;
         });
-      }
-      return { ...prev, [questionId]: newSelection };
-    });
-  };
-
-  const handleEditQuality = (questionId: string, quality: string) => {
-    setEditing({ [questionId]: { original: quality, current: quality } });
-  };
-
-  const cancelEdit = (questionId: string) => {
-    setEditing((prev) => ({ ...prev, [questionId]: null }));
-  };
-
-  const saveEditedQuality = (questionId: string) => {
-    const editState = editing[questionId];
-    if (!editState || !editState.current.trim()) return;
-    const { original, current } = editState;
-    setQuestions((prev) =>
-      prev.map((q) =>
-        q.question_id === questionId
-          ? {
-              ...q,
-              rubrics: q.rubrics?.map((r) => (r === original ? current : r)),
-            }
-          : q,
-      ),
-    );
-    setSelectedQualities((prev) => ({
-      ...prev,
-      [questionId]: (prev[questionId] || []).map((q) =>
-        q === original ? current : q,
-      ),
-    }));
-    setQualityCategories((prev) => {
-      const newCats = { ...prev[questionId] };
-      if (newCats[original]) {
-        newCats[current] = newCats[original];
-        delete newCats[original];
-      }
-      return { ...prev, [questionId]: newCats };
-    });
-    cancelEdit(questionId);
-  };
-
-  const assignToCategory = (
-    questionId: string,
-    quality: string,
-    category: string,
-  ) => {
-    setQualityCategories((prev) => {
-      const newCats = { ...(prev[questionId] || {}) };
-      if (category === "Unassigned") {
-        delete newCats[quality];
+        return prev.filter((q) => q !== quality);
       } else {
-        newCats[quality] = category;
+        return [...prev, quality];
       }
-      return { ...prev, [questionId]: newCats };
     });
   };
 
-  const getQualitiesInCategory = (questionId: string, category: string) => {
-    const selected = selectedQualities[questionId] || [];
-    const categories = qualityCategories[questionId] || {};
-    return selected.filter((q) =>
-      category === "Unassigned" ? !categories[q] : categories[q] === category,
+  const handleEditQuality = (quality: string) => {
+    setEditing({ original: quality, current: quality });
+  };
+
+  const handleSaveEdit = () => {
+    if (!editing) return;
+
+    // Update selected qualities
+    setSelectedQualities((prev) =>
+      prev.map((q) => (q === editing.original ? editing.current : q)),
     );
+
+    // Update categories if the quality was categorized
+    if (qualityCategories[editing.original]) {
+      const category = qualityCategories[editing.original];
+      setQualityCategories((prev) => {
+        const newCat = { ...prev };
+        delete newCat[editing.original];
+        newCat[editing.current] = category;
+        return newCat;
+      });
+    }
+
+    setEditing(null);
+  };
+
+  const assignToCategory = (quality: string, category: string) => {
+    setQualityCategories((prev) => ({
+      ...prev,
+      [quality]: category,
+    }));
   };
 
   const handleSubmit = async () => {
-    if (!userId) {
-      setError("User ID not found. Please log in again.");
+    if (!userId || !currentQuestion) {
+      setError("Missing required data. Please try again.");
+      return;
+    }
+
+    // Validate minimum 10 rubrics are selected
+    if (selectedQualities.length < 10) {
+      setError(
+        `Please select at least 10 rubrics to proceed. Currently selected: ${selectedQualities.length}/10`,
+      );
+      return;
+    }
+
+    // Validate rating is provided
+    if (rating === null) {
+      setError(
+        "Please provide a rating for the AI response before proceeding.",
+      );
       return;
     }
 
@@ -288,60 +336,68 @@ export default function ClassificationPage() {
     setError("");
 
     try {
-      // Create an object to hold user answers
-      const userAnswers: Record<
-        string,
-        {
-          user_answer: string;
-          status: string;
-          answered_at: string;
-        }
-      > = {};
+      // Prepare data for this single question
+      const questionData = {
+        [currentQuestion.question_id]: selectedQualities,
+      };
 
-      // Create an object to hold ratings
-      const userRatings: Record<string, number> = {};
+      const categoryData = {
+        [currentQuestion.question_id]: qualityCategories,
+      };
 
-      // Collect answers from questions state and localStorage
-      questions.forEach((q) => {
-        // First check localStorage for the most recent answer
-        const storedAnswer = localStorage.getItem(`answer_${q.question_id}`);
-        if (storedAnswer && storedAnswer.trim()) {
-          userAnswers[q.question_id] = {
-            user_answer: storedAnswer,
-            status: "answered",
-            answered_at: new Date().toISOString(),
-          };
-        } else if (q.user_answer) {
-          userAnswers[q.question_id] = {
-            user_answer: q.user_answer,
-            status: "answered",
-            answered_at: new Date().toISOString(),
-          };
-        }
+      const feedbackData = feedback
+        ? {
+            [currentQuestion.question_id]: feedback,
+          }
+        : {};
 
-        // Check localStorage for ratings first
-        const storedRating = localStorage.getItem(`rating_${q.question_id}`);
-        if (storedRating) {
-          userRatings[q.question_id] = parseInt(storedRating, 10);
-        } else if (q.llm_rating !== undefined && q.llm_rating !== null) {
-          userRatings[q.question_id] = q.llm_rating;
+      const editedQualities =
+        editing && editing.original !== editing.current
+          ? {
+              [editing.original]: editing.current,
+            }
+          : {};
+
+      // Prepare answer edit history
+      const answerEditHistory: Record<string, any> = {};
+      const storedEditHistory = localStorage.getItem(
+        `answer_edit_${currentQuestion.question_id}`,
+      );
+      if (storedEditHistory) {
+        try {
+          const editData = JSON.parse(storedEditHistory);
+          answerEditHistory[currentQuestion.question_id] = [editData];
+        } catch (err) {
+          console.error("Failed to parse answer edit history:", err);
         }
+      }
+
+      // Save rating first
+      const saveRatingResponse = await fetch("/api/save-rating", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          questionId: currentQuestion.question_id,
+          llmRating: rating,
+        }),
       });
 
-      // Save all data at once
+      if (!saveRatingResponse.ok) {
+        throw new Error("Failed to save rating");
+      }
+
+      // Save classification data for this question
       const response = await fetch("/api/save-rubric-choices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId,
-          answers: userAnswers,
-          ratings: userRatings,
-          selectedQualities,
-          qualityCategories,
-          editedQualities: Object.entries(editing)
-            .filter(([_, value]) => value !== null)
-            .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {}),
-          feedback,
+          selectedQualities: questionData,
+          qualityCategories: categoryData,
+          editedQualities,
+          feedback: feedbackData,
+          answerEditHistory,
         }),
       });
 
@@ -350,14 +406,26 @@ export default function ClassificationPage() {
         throw new Error(data.error || "Failed to save data");
       }
 
-      // Clear localStorage after successful submission
-      questions.forEach((q) => {
-        localStorage.removeItem(`answer_${q.question_id}`);
-        localStorage.removeItem(`rating_${q.question_id}`);
-      });
+      // Mark this question as classification completed
+      localStorage.setItem(
+        `classification_${currentQuestion.question_id}`,
+        "completed",
+      );
 
-      // Navigate to thank you page
-      router.push("/thank-you");
+      // Clear current question data
+      localStorage.removeItem("currentQuestionForClassification");
+
+      // Move to next question or complete
+      const totalQuestions = 20; // You can make this dynamic
+      if (currentQuestionIndex < totalQuestions - 1) {
+        // Go back to questions page for next question
+        const nextIndex = currentQuestionIndex + 1;
+        localStorage.setItem("currentQuestionIndex", nextIndex.toString());
+        router.push("/questions");
+      } else {
+        // All questions completed
+        router.push("/thank-you");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save data");
       setIsSubmitting(false);
@@ -370,390 +438,454 @@ export default function ClassificationPage() {
     setActiveDragId(event.active.id as string);
   };
 
-  const handleDragEnd = (event: DragEndEvent, questionId: string) => {
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveDragId(null);
     if (over && active.id !== over.id) {
-      assignToCategory(questionId, active.id as string, over.id as string);
+      assignToCategory(active.id as string, over.id as string);
     }
   };
 
   if (isLoading) {
-    /* ... */
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p>Loading question...</p>
+        </div>
+      </div>
+    );
   }
-  if (questions.length === 0) {
-    /* ... */
+
+  if (!currentQuestion) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex items-center justify-center">
+        <div className="text-center">
+          <p>No question found. Redirecting...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold">Medical Response Analysis</h1>
-          {/* CHANGE 3: ADDED INSTRUCTIONS */}
-          <p className="text-muted-foreground mt-2 max-w-6xl">
-            As a medical expert, please help us analyze the AI's clinical
-            responses. Complete the two steps below for each question:
-            <br />
-            First, select 10-15 qualities that characterize the AI's medical
-            assessment.
-            <br />
-            Then, categorize these qualities to help us understand the AI's
-            strengths and limitations in providing healthcare advice and
-            information.
-          </p>
+      <div className="container mx-auto px-6 py-10 max-w-7xl">
+        <div className="mb-12">
+          <h1 className="text-4xl sm:text-5xl font-bold text-slate-800 dark:text-slate-100 mb-6">
+            Medical Response Analysis
+          </h1>
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
+            <p className="text-base sm:text-lg text-slate-700 dark:text-slate-300 leading-relaxed max-w-6xl">
+              As a medical expert, please help us analyze the AI's clinical
+              responses. Complete the two steps below for this question:
+            </p>
+            <div className="mt-4 space-y-2">
+              <p className="text-base sm:text-lg text-slate-700 dark:text-slate-300 leading-relaxed">
+                <span className="font-semibold text-blue-600 dark:text-blue-400">
+                  Step 1:
+                </span>{" "}
+                Based on the AI's responses, help us rate the quality of the
+                AI's clinical assessment.
+              </p>
+              <p className="text-base sm:text-lg text-slate-700 dark:text-slate-300 leading-relaxed">
+                <span className="font-semibold text-blue-600 dark:text-blue-400">
+                  Step 2:
+                </span>{" "}
+                Select 10-15 qualities that characterize the AI's medical
+                assessment.
+              </p>
+              <p className="text-base sm:text-lg text-slate-700 dark:text-slate-300 leading-relaxed">
+                <span className="font-semibold text-blue-600 dark:text-blue-400">
+                  Step 3:
+                </span>{" "}
+                Categorize these qualities to help us understand the AI's
+                strengths and limitations.
+              </p>
+            </div>
+          </div>
         </div>
 
         {error && (
-          <Alert variant="destructive" className="mb-4 sm:mb-6">
-            <AlertDescription className="text-xs sm:text-sm">
-              {error}
-            </AlertDescription>
+          <Alert variant="destructive" className="mb-8">
+            <AlertDescription className="text-base">{error}</AlertDescription>
           </Alert>
         )}
 
-        <div className="space-y-8 sm:space-y-12">
-          {questions.map((question, index) => {
-            const selectedCount =
-              selectedQualities[question.question_id]?.length || 0;
-            const isEditing = !!editing[question.question_id];
-            return (
-              <Card
-                key={question.question_id}
-                className="shadow-lg border-t-4 border-[var(--color-purple-muted-border)] overflow-hidden"
-              >
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-center space-x-4">
-                      <div className="flex-shrink-0 w-10 h-10 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-lg font-bold">
-                        {index + 1}
-                      </div>
-                      {/* CHANGE 2: RESTORED SHOW MORE/LESS FOR QUESTION */}
-                      <CardTitle className="text-xl">
-                        {expandedText[question.question_id]?.question
-                          ? question.question_text
-                          : truncateText(question.question_text, 80)}
-                        {question.question_text.length > 80 && (
-                          <Button
-                            variant="link"
-                            size="sm"
-                            className="p-1 h-auto text-[var(--color-purple-muted)]"
-                            onClick={() =>
-                              toggleTextExpansion(
-                                question.question_id,
-                                "question",
-                              )
-                            }
-                          >
-                            {expandedText[question.question_id]?.question
-                              ? "Show less"
-                              : "Show more"}
-                          </Button>
-                        )}
-                      </CardTitle>
-                    </div>
-                    {/* CHANGE 1: IMPROVED BADGE READABILITY */}
-                    <Badge
-                      variant={
-                        selectedCount >= 10 && selectedCount <= 15
-                          ? "default"
-                          : "destructive"
-                      }
-                      className="text-white dark:text-black font-semibold"
-                    >
-                      {selectedCount} / 15 selected
-                    </Badge>
+        <div className="space-y-8">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold mb-2">
+              Question {currentQuestionIndex + 1} of 20
+            </h2>
+            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 mb-6">
+              <div
+                className="bg-[var(--color-purple-muted)] h-2 rounded-full transition-all duration-300"
+                style={{ width: `${((currentQuestionIndex + 1) / 20) * 100}%` }}
+              ></div>
+            </div>
+          </div>
+
+          <Card className="overflow-hidden shadow-lg border-2 border-slate-200 dark:border-slate-700">
+            <CardHeader>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center space-x-4">
+                  <div className="flex-shrink-0 w-10 h-10 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-lg font-bold">
+                    {currentQuestionIndex + 1}
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-8 p-6">
-                  <div className="grid md:grid-cols-2 gap-6 bg-muted/30 p-4 rounded-lg">
-                    {/* CHANGE 2: RESTORED SHOW MORE/LESS FOR ANSWERS */}
-                    <div className="space-y-2">
-                      <h4 className="font-semibold text-foreground flex items-center text-md">
-                        Your Answer
-                      </h4>
-                      <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                          {expandedText[question.question_id]?.userAnswer
-                            ? question.user_answer
-                            : truncateText(question.user_answer || "", 150)}
-                          {(question.user_answer?.length || 0) > 150 && (
-                            <Button
-                              variant="link"
-                              size="sm"
-                              className="p-1 h-auto text-blue-600"
-                              onClick={() =>
-                                toggleTextExpansion(
-                                  question.question_id,
-                                  "userAnswer",
-                                )
-                              }
-                            >
-                              {expandedText[question.question_id]?.userAnswer
-                                ? "Show less"
-                                : "Show more"}
-                            </Button>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <h4 className="font-semibold text-foreground flex items-center text-md">
-                        AI's Medical Assessment
-                      </h4>
-                      <div className="bg-[#f8f5ff] dark:bg-[var(--color-purple-muted-dark)]/10 p-4 rounded-lg border border-[var(--color-purple-muted-border)] dark:border-[var(--color-purple-muted-dark-border)]">
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                          {expandedText[question.question_id]?.aiAnswer
-                            ? question.llm_response
-                            : truncateText(question.llm_response, 150)}
-                          {question.llm_response.length > 150 && (
-                            <Button
-                              variant="link"
-                              size="sm"
-                              className="p-1 h-auto text-[var(--color-purple-muted)]"
-                              onClick={() =>
-                                toggleTextExpansion(
-                                  question.question_id,
-                                  "aiAnswer",
-                                )
-                              }
-                            >
-                              {expandedText[question.question_id]?.aiAnswer
-                                ? "Show less"
-                                : "Show more"}
-                            </Button>
-                          )}
-                        </p>
-                      </div>
+                  <CardTitle className="text-xl">
+                    {currentQuestion.question_text}
+                  </CardTitle>
+                </div>
+                <Badge
+                  variant={
+                    selectedQualities.length >= 10 &&
+                    selectedQualities.length <= 15
+                      ? "default"
+                      : "destructive"
+                  }
+                  className="text-white dark:text-black font-semibold"
+                >
+                  {selectedQualities.length} / 15 selected
+                </Badge>
+              </div>
+            </CardHeader>
+
+            <CardContent className="space-y-8 p-6">
+              <div className="grid md:grid-cols-2 gap-6 bg-muted/30 p-4 rounded-lg">
+                <div className="space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
+                    <h4 className="font-semibold text-foreground flex items-center text-md">
+                      Your Expert Assessment
+                    </h4>
+                    <div className="flex items-center">
+                      <span className="text-xs text-muted-foreground mr-2">
+                        {wordCounts.user} words
+                      </span>
+                      {!editingAnswer && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => {
+                            setEditedAnswer(currentQuestion.user_answer || "");
+                            setOriginalAnswer(
+                              currentQuestion.user_answer || "",
+                            );
+                            setEditingAnswer(true);
+                          }}
+                        >
+                          <Pencil className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                          Edit
+                        </Button>
+                      )}
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-6 border-t">
-                    <div className="space-y-3 sm:space-y-4">
-                      <div className="text-center lg:text-left">
-                        <h2 className="text-base sm:text-lg font-semibold flex items-center gap-1 sm:gap-2">
-                          <ListChecks className="text-[var(--color-purple-muted)] h-4 w-4 sm:h-5 sm:w-5" />
-                          Step 1: Identify Key Qualities
-                        </h2>
-                        <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-                          Select 10-15 qualities that characterize the AI's
-                          response. Click the{" "}
-                          <Pencil className="inline h-3 w-3" /> to modify if
-                          needed.
-                        </p>
-                      </div>
-                      <div className="space-y-1 p-2 sm:p-3 border rounded-lg max-h-[300px] sm:max-h-[400px] md:max-h-[500px] overflow-y-auto bg-white dark:bg-zinc-900">
-                        {question.rubrics?.map((quality, idx) => {
-                          const isSelected =
-                            selectedQualities[question.question_id]?.includes(
-                              quality,
-                            );
-                          const isCurrentlyEditing =
-                            editing[question.question_id]?.original === quality;
-                          return (
-                            <div
-                              key={quality}
-                              className={`flex items-center space-x-2 sm:space-x-3 p-2 sm:p-3 rounded-lg transition-colors ${isSelected ? "bg-[#f8f5ff] dark:bg-[var(--color-purple-muted-dark)]/20" : "hover:bg-slate-50 dark:hover:bg-zinc-800/50"}`}
-                            >
-                              {isCurrentlyEditing ? (
-                                <div className="flex-1 flex items-center gap-1 sm:gap-2">
-                                  <Input
-                                    value={
-                                      editing[question.question_id]?.current ||
-                                      ""
-                                    }
-                                    onChange={(e) =>
-                                      setEditing((prev) => ({
-                                        ...prev,
-                                        [question.question_id]: {
-                                          ...prev[question.question_id]!,
-                                          current: e.target.value,
-                                        },
-                                      }))
-                                    }
-                                    className="h-7 sm:h-8 text-xs sm:text-sm"
-                                  />
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 w-7 sm:h-8 sm:w-8 p-0"
-                                    onClick={() =>
-                                      saveEditedQuality(question.question_id)
-                                    }
-                                  >
-                                    <Check className="h-3 w-3 sm:h-4 sm:w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 w-7 sm:h-8 sm:w-8 p-0"
-                                    onClick={() =>
-                                      cancelEdit(question.question_id)
-                                    }
-                                  >
-                                    <X className="h-3 w-3 sm:h-4 sm:w-4" />
-                                  </Button>
-                                </div>
-                              ) : (
-                                <>
-                                  <input
-                                    type="checkbox"
-                                    id={`${question.question_id}-${idx}`}
-                                    checked={isSelected}
-                                    onChange={() =>
-                                      toggleQualitySelection(
-                                        question.question_id,
-                                        quality,
-                                      )
-                                    }
-                                    className="h-4 w-4 sm:h-5 sm:w-5 rounded border-gray-300 text-[var(--color-purple-muted)] focus:ring-[var(--color-purple-muted-border)]"
-                                  />
-                                  <label
-                                    htmlFor={`${question.question_id}-${idx}`}
-                                    className="flex-1 text-xs sm:text-sm cursor-pointer"
-                                  >
-                                    {quality}
-                                  </label>
-                                  <Button
-                                    disabled={isEditing}
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 p-0"
-                                    onClick={() =>
-                                      handleEditQuality(
-                                        question.question_id,
-                                        quality,
-                                      )
-                                    }
-                                  >
-                                    <Pencil className="h-3 w-3 sm:h-4 sm:w-4" />
-                                  </Button>
-                                </>
-                              )}
-                            </div>
-                          );
-                        })}
+                  {editingAnswer ? (
+                    <div className="space-y-2">
+                      <Textarea
+                        value={editedAnswer}
+                        onChange={(e) => {
+                          setEditedAnswer(e.target.value);
+                          setWordCounts((prev) => ({
+                            ...prev,
+                            user: countWords(e.target.value),
+                          }));
+                        }}
+                        className="min-h-[100px] sm:min-h-[120px] text-sm"
+                      />
+                      <div className="flex space-x-2">
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={handleSaveEditedAnswer}
+                        >
+                          <Check className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => setEditingAnswer(false)}
+                        >
+                          <X className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                          Cancel
+                        </Button>
                       </div>
                     </div>
-                    <div className="space-y-3 sm:space-y-4">
-                      <div className="text-center lg:text-left">
-                        <h2 className="text-base sm:text-lg font-semibold flex items-center gap-1 sm:gap-2">
-                          <ArrowDownUp className="text-[var(--color-purple-muted)] h-4 w-4 sm:h-5 sm:w-5" />
-                          Step 2: Categorize Response Attributes
-                        </h2>
-                        <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-                          Drag each quality into the most appropriate medical
-                          category to help us understand the AI's clinical
-                          strengths and weaknesses.
-                        </p>
-                      </div>
-                      <DndContext
-                        sensors={sensors}
-                        onDragStart={handleDragStart}
-                        onDragEnd={(e) =>
-                          handleDragEnd(e, question.question_id)
-                        }
-                      >
-                        <div className="space-y-3 sm:space-y-4">
-                          <CategoryDropzone
-                            id="Unassigned"
-                            title="Unclassified Qualities (Drag to Categories)"
-                            isOver={
-                              activeDragId
-                                ? "Unassigned" ===
-                                  (qualityCategories[question.question_id]?.[
-                                    activeDragId
-                                  ] || "Unassigned")
-                                : false
-                            }
-                          >
-                            {getQualitiesInCategory(
-                              question.question_id,
-                              "Unassigned",
-                            ).map((quality) => (
-                              <DraggableQuality key={quality} id={quality}>
+                  ) : (
+                    <div className="bg-white dark:bg-zinc-800 p-4 rounded-lg border">
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                        {currentQuestion.user_answer}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-0">
+                    <h4 className="font-semibold text-foreground flex items-center text-md">
+                      AI's Response
+                    </h4>
+                    <span className="text-xs text-muted-foreground">
+                      {wordCounts.ai} words
+                    </span>
+                  </div>
+                  <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                      {currentQuestion.llm_response}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rating Section */}
+              <div className="border-t pt-4 sm:pt-6">
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-foreground text-center text-sm sm:text-md">
+                    Rate the quality of the AI's clinical assessment:
+                  </h4>
+                  <div className="flex items-center justify-center space-x-1 sm:space-x-2">
+                    <span className="text-xs sm:text-sm text-muted-foreground w-8 sm:w-12 text-right">
+                      Poor
+                    </span>
+                    <div className="flex flex-wrap justify-center gap-1">
+                      {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((ratingValue) => (
+                        <button
+                          key={ratingValue}
+                          onClick={() => handleRatingClick(ratingValue)}
+                          disabled={isSavingRating}
+                          className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center ${
+                            rating === ratingValue
+                              ? "bg-[var(--color-purple-muted)] text-white scale-110 shadow-lg"
+                              : "bg-slate-200 dark:bg-zinc-700 hover:bg-slate-300 dark:hover:bg-zinc-600 text-slate-600 dark:text-zinc-300"
+                          } ${isSavingRating ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          {isSavingRating && rating === ratingValue ? (
+                            <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin mx-auto" />
+                          ) : (
+                            ratingValue
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-xs sm:text-sm text-muted-foreground w-12 sm:w-16 text-left">
+                      Expert
+                    </span>
+                  </div>
+                  {rating !== undefined && rating !== null && (
+                    <div className="text-center">
+                      <Badge variant="default" className="text-xs">
+                        Rated: {rating}/10
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Classification Section */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-12 mt-8 border-t-2 border-slate-200 dark:border-slate-700">
+                <div className="space-y-6">
+                  <div className="text-center lg:text-left">
+                    <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 mb-3">
+                      <ListChecks className="text-[var(--color-purple-muted)] h-5 w-5 sm:h-6 sm:w-6" />
+                      Step 1: Identify Key Qualities
+                    </h2>
+                    <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
+                      Select 10-15 qualities that characterize the AI's
+                      response. Click the <Pencil className="inline h-3 w-3" />{" "}
+                      to modify if needed.
+                    </p>
+                  </div>
+                  <div className="space-y-1 p-2 sm:p-3 border rounded-lg max-h-[300px] sm:max-h-[400px] md:max-h-[500px] overflow-y-auto bg-white dark:bg-zinc-900">
+                    {currentQuestion.rubrics?.map((quality, idx) => {
+                      const isSelected = selectedQualities.includes(quality);
+                      const isCurrentlyEditing = editing?.original === quality;
+                      return (
+                        <div
+                          key={quality}
+                          className={`flex items-center space-x-2 sm:space-x-3 p-2 sm:p-3 rounded-lg transition-colors ${
+                            isSelected
+                              ? "bg-[#f8f5ff] dark:bg-[var(--color-purple-muted-dark)]/20"
+                              : "hover:bg-slate-50 dark:hover:bg-zinc-800/50"
+                          }`}
+                        >
+                          {isCurrentlyEditing ? (
+                            <div className="flex-1 flex items-center gap-1 sm:gap-2">
+                              <Input
+                                value={editing?.current || ""}
+                                onChange={(e) =>
+                                  setEditing((prev) =>
+                                    prev
+                                      ? { ...prev, current: e.target.value }
+                                      : null,
+                                  )
+                                }
+                                className="text-xs sm:text-sm"
+                              />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 p-0"
+                                onClick={handleSaveEdit}
+                              >
+                                <Check className="h-3 w-3 sm:h-4 sm:w-4 text-green-600" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 p-0"
+                                onClick={() => setEditing(null)}
+                              >
+                                <X className="h-3 w-3 sm:h-4 sm:w-4 text-red-600" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <>
+                              <input
+                                type="checkbox"
+                                id={`${currentQuestion.question_id}-${idx}`}
+                                checked={isSelected}
+                                onChange={() => toggleQualitySelection(quality)}
+                                className="h-4 w-4 sm:h-5 sm:w-5 rounded border-gray-300 text-[var(--color-purple-muted)] focus:ring-[var(--color-purple-muted-border)]"
+                              />
+                              <label
+                                htmlFor={`${currentQuestion.question_id}-${idx}`}
+                                className="flex-1 text-xs sm:text-sm cursor-pointer"
+                              >
                                 {quality}
+                              </label>
+                              <Button
+                                disabled={!!editing}
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 p-0"
+                                onClick={() => handleEditQuality(quality)}
+                              >
+                                <Pencil className="h-3 w-3 sm:h-4 sm:w-4" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="text-center lg:text-left">
+                    <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 mb-3">
+                      <ArrowDownUp className="text-[var(--color-purple-muted)] h-5 w-5 sm:h-6 sm:w-6" />
+                      Step 2: Categorize Response Attributes
+                    </h2>
+                    <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
+                      Drag each selected quality into the most appropriate
+                      medical category to help us understand the AI's clinical
+                      strengths and weaknesses.
+                    </p>
+                  </div>
+                  <DndContext
+                    sensors={sensors}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <div className="space-y-3 sm:space-y-4">
+                      {CATEGORIES.map((category) => (
+                        <CategoryDropzone
+                          key={category}
+                          id={category}
+                          title={category}
+                          isOver={activeDragId !== null}
+                        >
+                          {selectedQualities
+                            .filter(
+                              (quality) =>
+                                qualityCategories[quality] === category,
+                            )
+                            .map((quality) => (
+                              <DraggableQuality key={quality} id={quality}>
+                                <div className="flex items-center justify-between">
+                                  <span className="flex-1">{quality}</span>
+                                  <GripVertical className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400" />
+                                </div>
                               </DraggableQuality>
                             ))}
-                          </CategoryDropzone>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                            {CATEGORIES.map((category) => (
-                              <CategoryDropzone
-                                key={category}
-                                id={category}
-                                title={category}
-                                isOver={
-                                  activeDragId
-                                    ? category ===
-                                      qualityCategories[question.question_id]?.[
-                                        activeDragId
-                                      ]
-                                    : false
-                                }
-                              >
-                                {getQualitiesInCategory(
-                                  question.question_id,
-                                  category,
-                                ).map((quality) => (
-                                  <DraggableQuality key={quality} id={quality}>
-                                    {quality}
-                                  </DraggableQuality>
-                                ))}
-                              </CategoryDropzone>
+                        </CategoryDropzone>
+                      ))}
+
+                      {/* Unassigned qualities */}
+                      <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 min-h-[80px]">
+                        <h3 className="font-semibold text-sm mb-2 text-gray-600">
+                          Unassigned Qualities
+                        </h3>
+                        <div className="space-y-1">
+                          {selectedQualities
+                            .filter((quality) => !qualityCategories[quality])
+                            .map((quality) => (
+                              <DraggableQuality key={quality} id={quality}>
+                                <div className="flex items-center justify-between">
+                                  <span className="flex-1">{quality}</span>
+                                  <GripVertical className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400" />
+                                </div>
+                              </DraggableQuality>
                             ))}
-                          </div>
                         </div>
-                      </DndContext>
+                      </div>
                     </div>
-                  </div>
-                  <div className="mt-4 pt-4 sm:mt-6 sm:pt-6 border-t">
-                    <h4 className="font-medium text-sm sm:text-base mb-2">
-                      Additional Clinical Insights
-                    </h4>
-                    <Textarea
-                      placeholder="Share any professional observations about the AI's clinical reasoning, knowledge gaps, or areas for improvement..."
-                      value={feedback[question.question_id] || ""}
-                      onChange={(e) =>
-                        setFeedback((prev) => ({
-                          ...prev,
-                          [question.question_id]: e.target.value,
-                        }))
-                      }
-                      className="min-h-[60px] sm:min-h-[80px] text-xs sm:text-sm"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                  </DndContext>
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-slate-200 dark:border-slate-700">
+                <div className="space-y-3">
+                  <label
+                    htmlFor="feedback"
+                    className="text-base font-semibold text-slate-800 dark:text-slate-200"
+                  >
+                    Additional Feedback (Optional):
+                  </label>
+                  <Textarea
+                    id="feedback"
+                    placeholder="Share any additional insights about this AI response..."
+                    value={feedback}
+                    onChange={(e) => setFeedback(e.target.value)}
+                    className="min-h-[100px] text-base resize-y"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        <div className="mt-6 sm:mt-8 flex flex-col-reverse sm:flex-row justify-between gap-3 sm:gap-0">
+        <div className="mt-12 flex justify-between items-center">
           <Button
-            onClick={() => router.push("/rating")}
+            onClick={() => router.push("/questions")}
             variant="outline"
             size="lg"
             disabled={isSubmitting}
-            className="text-xs sm:text-sm h-10 sm:h-11"
           >
-            <ArrowLeft className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> Return
-            to Rating Assessment
+            <ArrowLeft className="mr-2 h-5 w-5" />
+            Back to Question
           </Button>
+
           <Button
             onClick={handleSubmit}
             size="lg"
-            disabled={isSubmitting}
-            className="text-xs sm:text-sm h-10 sm:h-11"
+            disabled={
+              isSubmitting || selectedQualities.length < 10 || rating === null
+            }
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                 Saving...
               </>
             ) : (
               <>
-                Submit Expert Evaluation
-                <ArrowRight className="ml-1 sm:ml-2 h-3 w-3 sm:h-4 sm:w-4" />
+                {currentQuestionIndex < 19
+                  ? "Next Question"
+                  : "Complete Review"}
+                <ArrowRight className="ml-2 h-5 w-5" />
               </>
             )}
           </Button>

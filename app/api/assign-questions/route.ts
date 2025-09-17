@@ -4,7 +4,12 @@ import {
   DATASET_TABLE,
   RESPONSES_TABLE,
 } from "@/lib/aws/dynamodb";
-import { ScanCommand, UpdateCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  ScanCommand,
+  UpdateCommand,
+  PutCommand,
+  QueryCommand,
+} from "@aws-sdk/lib-dynamodb";
 import { v4 as uuidv4 } from "uuid";
 import {
   Question,
@@ -43,7 +48,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const userId = uuidv4();
+    // Check if user already exists by email
+    let userId = uuidv4();
+    let existingUser = null;
+
+    try {
+      const dynamoDb = getDynamoDbClient();
+      const queryCommand = new ScanCommand({
+        TableName: RESPONSES_TABLE,
+        FilterExpression: "email = :email",
+        ExpressionAttributeValues: {
+          ":email": email,
+        },
+      });
+      const queryResult = await dynamoDb.send(queryCommand);
+
+      if (queryResult.Items && queryResult.Items.length > 0) {
+        existingUser = queryResult.Items[0];
+        userId = existingUser.user_id;
+        console.log(
+          `Found existing user with email ${email}, user_id: ${userId}`,
+        );
+      }
+    } catch (error) {
+      console.error("Error checking for existing user:", error);
+      // Continue with new user creation if check fails
+    }
 
     let scanResult;
     try {
@@ -83,10 +113,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Shuffle questions to ensure different users get different questions
+    const shuffledQuestions = [...availableQuestions].sort(
+      () => Math.random() - 0.5,
+    );
+
     const uniqueQuestions: Question[] = [];
     const seenQuestionIds = new Set<string>();
 
-    for (const question of availableQuestions) {
+    for (const question of shuffledQuestions) {
       if (!seenQuestionIds.has(question.question_id)) {
         seenQuestionIds.add(question.question_id);
         uniqueQuestions.push(question);
@@ -172,37 +207,69 @@ export async function POST(request: NextRequest) {
     }
 
     if (Object.keys(questionsMap).length > 0) {
-      const userResponseItem: UserResponseRecord = {
-        user_id: userId,
-        user_name: name,
-        user_profession: profession,
-        email: email,
-        phone: phone || "",
-        clinical_experience: clinicalExperience || "",
-        ai_exposure: aiExposure || "",
-        questions: questionsMap,
-        answers: {}, // Will be populated as user answers questions
-        ratings: {}, // Will be populated as user rates responses
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
+      if (existingUser) {
+        // Update existing user with new questions
+        try {
+          const updateCommand = new UpdateCommand({
+            TableName: RESPONSES_TABLE,
+            Key: { user_id: userId },
+            UpdateExpression:
+              "SET questions = :questions, updated_at = :updatedAt, user_name = :name, user_profession = :profession",
+            ExpressionAttributeValues: {
+              ":questions": { ...existingUser.questions, ...questionsMap },
+              ":updatedAt": new Date().toISOString(),
+              ":name": name,
+              ":profession": profession,
+            },
+          });
 
-      try {
-        const putCommand = new PutCommand({
-          TableName: RESPONSES_TABLE,
-          Item: userResponseItem,
-        });
+          const dynamoDb = getDynamoDbClient();
+          await dynamoDb.send(updateCommand);
+          console.log(`Updated existing user ${userId} with new questions`);
+        } catch (error) {
+          console.error(`Error updating existing user record:`, error);
+          return NextResponse.json(
+            {
+              error: "Failed to update user record. Please try again.",
+            },
+            { status: 500 },
+          );
+        }
+      } else {
+        // Create new user
+        const userResponseItem: UserResponseRecord = {
+          user_id: userId,
+          user_name: name,
+          user_profession: profession,
+          email: email,
+          phone: phone || "",
+          clinical_experience: clinicalExperience || "",
+          ai_exposure: aiExposure || "",
+          questions: questionsMap,
+          answers: {}, // Will be populated as user answers questions
+          ratings: {}, // Will be populated as user rates responses
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
 
-        const dynamoDb = getDynamoDbClient();
-        await dynamoDb.send(putCommand);
-      } catch (error) {
-        console.error(`Error creating user response record:`, error);
-        return NextResponse.json(
-          {
-            error: "Failed to create user record. Please try again.",
-          },
-          { status: 500 },
-        );
+        try {
+          const putCommand = new PutCommand({
+            TableName: RESPONSES_TABLE,
+            Item: userResponseItem,
+          });
+
+          const dynamoDb = getDynamoDbClient();
+          await dynamoDb.send(putCommand);
+          console.log(`Created new user ${userId}`);
+        } catch (error) {
+          console.error(`Error creating user response record:`, error);
+          return NextResponse.json(
+            {
+              error: "Failed to create user record. Please try again.",
+            },
+            { status: 500 },
+          );
+        }
       }
     }
 
@@ -222,7 +289,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       userId,
       assignedQuestions: assignedQuestions.length,
-      message: `Successfully assigned ${assignedQuestions.length} questions`,
+      message: existingUser
+        ? `Welcome back! Added ${assignedQuestions.length} new questions to your existing set.`
+        : `Successfully assigned ${assignedQuestions.length} questions`,
+      isReturningUser: !!existingUser,
     });
   } catch (error) {
     console.error("Error assigning questions:", error);
