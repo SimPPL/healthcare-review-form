@@ -250,10 +250,10 @@ export default function QuestionsPage() {
 
       <div className="container mx-auto px-6 py-10 max-w-4xl">
         <div className="mb-12">
-          <h1 className="text-4xl sm:text-5xl font-bold text-slate-800 dark:text-slate-100 mb-4">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-800 dark:text-slate-100 mb-4">
             Healthcare Expert Review
           </h1>
-          <p className="text-lg text-slate-600 dark:text-slate-400">
+          <p className="text-sm sm:text-base md:text-lg text-slate-600 dark:text-slate-400">
             Welcome, {userName}! Please provide your expert clinical assessment
             for each AI response.
           </p>
@@ -262,13 +262,13 @@ export default function QuestionsPage() {
         {currentQuestion && (
           <>
             {/* Progress indicator */}
-            <div className="mb-8 bg-slate-100 dark:bg-zinc-900 rounded-xl p-6">
+            <div className="mb-8 bg-slate-100 dark:bg-zinc-900 rounded-xl p-4 sm:p-6">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200">
+                <h2 className="text-sm sm:text-base md:text-lg font-semibold text-slate-800 dark:text-slate-200">
                   Progress: Question {currentQuestionIndex + 1} of{" "}
                   {questions.length}
                 </h2>
-                <span className="text-sm text-muted-foreground">
+                <span className="text-xs sm:text-sm text-muted-foreground">
                   {Math.round(
                     ((currentQuestionIndex + 1) / questions.length) * 100,
                   )}
@@ -292,24 +292,24 @@ export default function QuestionsPage() {
             )}
 
             <Card className="shadow-lg border-t-4 border-[var(--color-purple-muted-border)] overflow-hidden">
-              <CardHeader className="px-6 sm:px-5 py-6">
-                <div className="flex items-start space-x-4 sm:space-x-6">
-                  <div className="flex-shrink-0 w-12 h-12 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-xl font-bold">
+              <CardHeader className="px-4 sm:px-6 py-4 sm:py-6">
+                <div className="flex items-start space-x-3 sm:space-x-4 md:space-x-6">
+                  <div className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-sm sm:text-lg md:text-xl font-bold">
                     {currentQuestionIndex + 1}
                   </div>
-                  <CardTitle className="text-xl sm:text-2xl leading-relaxed font-semibold text-slate-800 dark:text-slate-100">
+                  <CardTitle className="text-base sm:text-lg md:text-xl lg:text-2xl leading-relaxed font-semibold text-slate-800 dark:text-slate-100">
                     {currentQuestion.question_text}
                   </CardTitle>
                 </div>
               </CardHeader>
 
-              <CardContent className="space-y-8 p-6 sm:p-8">
+              <CardContent className="space-y-6 sm:space-y-8 p-4 sm:p-6 md:p-8">
                 {/* Answer Section */}
-                <div className="flex justify-between items-center">
-                  <label className="text-lg font-semibold text-slate-800 dark:text-slate-200">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-0">
+                  <label className="text-sm sm:text-base md:text-lg font-semibold text-slate-800 dark:text-slate-200">
                     Your Clinical Assessment:
                   </label>
-                  <span className="text-sm text-muted-foreground bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">
+                  <span className="text-xs sm:text-sm text-muted-foreground bg-slate-100 dark:bg-slate-800 px-2 sm:px-3 py-1 rounded-full">
                     {wordCount} words
                   </span>
                 </div>
@@ -317,7 +317,7 @@ export default function QuestionsPage() {
                   placeholder="Share your medical expertise here (50-100 words recommended)..."
                   value={answer}
                   onChange={(e) => handleAnswerChange(e.target.value)}
-                  className="min-h-[160px] text-base resize-y bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-[var(--color-purple-muted-border)] leading-relaxed"
+                  className="min-h-[120px] sm:min-h-[160px] text-sm sm:text-base resize-y bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-[var(--color-purple-muted-border)] leading-relaxed"
                 />
               </CardContent>
             </Card>

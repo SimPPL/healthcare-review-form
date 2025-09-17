@@ -151,10 +151,10 @@ export default function HomePage() {
                 priority
               />
             </div>
-            <CardTitle className="text-xl sm:text-2xl font-semibold text-foreground">
+            <CardTitle className="text-lg sm:text-xl md:text-2xl font-semibold text-foreground">
               Healthcare Review Form
             </CardTitle>
-            <CardDescription className="text-muted-foreground text-sm">
+            <CardDescription className="text-muted-foreground text-xs sm:text-sm">
               Please provide your information to get started
             </CardDescription>
           </CardHeader>
@@ -162,7 +162,10 @@ export default function HomePage() {
           <CardContent className="px-4 sm:px-6">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="input-name" className="text-sm font-medium">
+                <Label
+                  htmlFor="input-name"
+                  className="text-xs sm:text-sm font-medium"
+                >
                   Name <span className="text-destructive">*</span>
                 </Label>
                 <Input
@@ -177,7 +180,10 @@ export default function HomePage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="input-email" className="text-sm font-medium">
+                <Label
+                  htmlFor="input-email"
+                  className="text-xs sm:text-sm font-medium"
+                >
                   Email <span className="text-destructive">*</span>
                 </Label>
                 <Input
@@ -192,7 +198,10 @@ export default function HomePage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="input-phone" className="text-sm font-medium">
+                <Label
+                  htmlFor="input-phone"
+                  className="text-xs sm:text-sm font-medium"
+                >
                   Phone Number (Optional)
                 </Label>
                 <Input
@@ -209,7 +218,7 @@ export default function HomePage() {
               <div className="space-y-2">
                 <Label
                   htmlFor="input-profession"
-                  className="text-sm font-medium"
+                  className="text-xs sm:text-sm font-medium"
                 >
                   Medical Profession <span className="text-destructive">*</span>
                 </Label>
@@ -229,7 +238,7 @@ export default function HomePage() {
               <div className="space-y-2">
                 <Label
                   htmlFor="select-clinical-experience"
-                  className="text-sm font-medium"
+                  className="text-xs sm:text-sm font-medium"
                 >
                   Years of Clinical Experience (Optional)
                 </Label>
@@ -255,7 +264,7 @@ export default function HomePage() {
               <div className="space-y-2">
                 <Label
                   htmlFor="select-ai-exposure"
-                  className="text-sm font-medium"
+                  className="text-xs sm:text-sm font-medium"
                 >
                   Prior Exposure to AI Tools (Optional)
                 </Label>
@@ -285,7 +294,7 @@ export default function HomePage() {
 
               <Button
                 type="submit"
-                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground text-sm sm:text-base"
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground text-xs sm:text-sm md:text-base"
                 disabled={isLoading}
               >
                 {isLoading ? (

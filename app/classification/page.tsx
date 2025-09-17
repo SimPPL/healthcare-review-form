@@ -471,30 +471,30 @@ export default function ClassificationPage() {
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
       <div className="container mx-auto px-6 py-10 max-w-7xl">
         <div className="mb-12">
-          <h1 className="text-4xl sm:text-5xl font-bold text-slate-800 dark:text-slate-100 mb-6">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-800 dark:text-slate-100 mb-6">
             Medical Response Analysis
           </h1>
           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
-            <p className="text-base sm:text-lg text-slate-700 dark:text-slate-300 leading-relaxed max-w-6xl">
+            <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed max-w-6xl">
               As a medical expert, please help us analyze the AI's clinical
-              responses. Complete the two steps below for this question:
+              responses. Complete the three steps below for this question:
             </p>
             <div className="mt-4 space-y-2">
-              <p className="text-base sm:text-lg text-slate-700 dark:text-slate-300 leading-relaxed">
+              <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed">
                 <span className="font-semibold text-blue-600 dark:text-blue-400">
                   Step 1:
                 </span>{" "}
                 Based on the AI's responses, help us rate the quality of the
                 AI's clinical assessment.
               </p>
-              <p className="text-base sm:text-lg text-slate-700 dark:text-slate-300 leading-relaxed">
+              <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed">
                 <span className="font-semibold text-blue-600 dark:text-blue-400">
                   Step 2:
                 </span>{" "}
                 Select 10-15 qualities that characterize the AI's medical
                 assessment.
               </p>
-              <p className="text-base sm:text-lg text-slate-700 dark:text-slate-300 leading-relaxed">
+              <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed">
                 <span className="font-semibold text-blue-600 dark:text-blue-400">
                   Step 3:
                 </span>{" "}
@@ -513,7 +513,7 @@ export default function ClassificationPage() {
 
         <div className="space-y-8">
           <div className="text-center">
-            <h2 className="text-2xl font-bold mb-2">
+            <h2 className="text-lg sm:text-xl font-bold mb-2">
               Question {currentQuestionIndex + 1} of 20
             </h2>
             <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 mb-6">
@@ -531,7 +531,7 @@ export default function ClassificationPage() {
                   <div className="flex-shrink-0 w-10 h-10 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-lg font-bold">
                     {currentQuestionIndex + 1}
                   </div>
-                  <CardTitle className="text-xl">
+                  <CardTitle className="text-lg sm:text-xl">
                     {currentQuestion.question_text}
                   </CardTitle>
                 </div>
@@ -639,11 +639,14 @@ export default function ClassificationPage() {
                 </div>
               </div>
 
-              {/* Rating Section */}
+              {/* Step 1: Rating Section */}
               <div className="border-t pt-4 sm:pt-6">
                 <div className="space-y-3">
-                  <h4 className="font-semibold text-foreground text-center text-sm sm:text-md">
-                    Rate the quality of the AI's clinical assessment:
+                  <h4 className="font-semibold text-foreground text-center text-lg sm:text-xl flex items-center justify-center gap-2 mb-4">
+                    <div className="w-6 h-6 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-sm font-bold">
+                      1
+                    </div>
+                    Step 1: Rate the quality of the AI's clinical assessment
                   </h4>
                   <div className="flex items-center justify-center space-x-1 sm:space-x-2">
                     <span className="text-xs sm:text-sm text-muted-foreground w-8 sm:w-12 text-right">
@@ -688,8 +691,10 @@ export default function ClassificationPage() {
                 <div className="space-y-6">
                   <div className="text-center lg:text-left">
                     <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 mb-3">
-                      <ListChecks className="text-[var(--color-purple-muted)] h-5 w-5 sm:h-6 sm:w-6" />
-                      Step 1: Identify Key Qualities
+                      <div className="w-6 h-6 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-sm font-bold">
+                        2
+                      </div>
+                      Step 2: Identify Key Qualities
                     </h2>
                     <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
                       Select 10-15 qualities that characterize the AI's
@@ -775,8 +780,10 @@ export default function ClassificationPage() {
                 <div className="space-y-6">
                   <div className="text-center lg:text-left">
                     <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 mb-3">
-                      <ArrowDownUp className="text-[var(--color-purple-muted)] h-5 w-5 sm:h-6 sm:w-6" />
-                      Step 2: Categorize Response Attributes
+                      <div className="w-6 h-6 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-sm font-bold">
+                        3
+                      </div>
+                      Step 3: Categorize Response Attributes
                     </h2>
                     <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
                       Drag each selected quality into the most appropriate
@@ -789,6 +796,24 @@ export default function ClassificationPage() {
                     onDragStart={handleDragStart}
                     onDragEnd={handleDragEnd}
                   >
+                    {/* Unassigned qualities */}
+                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 min-h-[80px]">
+                      <h3 className="font-semibold text-sm mb-2 text-gray-600">
+                        Unassigned Qualities
+                      </h3>
+                      <div className="space-y-1">
+                        {selectedQualities
+                          .filter((quality) => !qualityCategories[quality])
+                          .map((quality) => (
+                            <DraggableQuality key={quality} id={quality}>
+                              <div className="flex items-center justify-between">
+                                <span className="flex-1">{quality}</span>
+                                <GripVertical className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400" />
+                              </div>
+                            </DraggableQuality>
+                          ))}
+                      </div>
+                    </div>
                     <div className="space-y-3 sm:space-y-4">
                       {CATEGORIES.map((category) => (
                         <CategoryDropzone
@@ -812,25 +837,6 @@ export default function ClassificationPage() {
                             ))}
                         </CategoryDropzone>
                       ))}
-
-                      {/* Unassigned qualities */}
-                      <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 min-h-[80px]">
-                        <h3 className="font-semibold text-sm mb-2 text-gray-600">
-                          Unassigned Qualities
-                        </h3>
-                        <div className="space-y-1">
-                          {selectedQualities
-                            .filter((quality) => !qualityCategories[quality])
-                            .map((quality) => (
-                              <DraggableQuality key={quality} id={quality}>
-                                <div className="flex items-center justify-between">
-                                  <span className="flex-1">{quality}</span>
-                                  <GripVertical className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400" />
-                                </div>
-                              </DraggableQuality>
-                            ))}
-                        </div>
-                      </div>
                     </div>
                   </DndContext>
                 </div>
@@ -840,7 +846,7 @@ export default function ClassificationPage() {
                 <div className="space-y-3">
                   <label
                     htmlFor="feedback"
-                    className="text-base font-semibold text-slate-800 dark:text-slate-200"
+                    className="text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-200"
                   >
                     Additional Feedback (Optional):
                   </label>
@@ -849,7 +855,7 @@ export default function ClassificationPage() {
                     placeholder="Share any additional insights about this AI response..."
                     value={feedback}
                     onChange={(e) => setFeedback(e.target.value)}
-                    className="min-h-[100px] text-base resize-y"
+                    className="min-h-[100px] text-sm sm:text-base resize-y"
                   />
                 </div>
               </div>
