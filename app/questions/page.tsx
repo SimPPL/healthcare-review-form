@@ -15,7 +15,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, ArrowRight, ArrowLeft } from "lucide-react";
 import type { UserResponse } from "@/types";
-import { useTourGuide } from "@/hooks/useTourGuide";
 
 export default function QuestionsPage() {
   const router = useRouter();
@@ -30,7 +29,6 @@ export default function QuestionsPage() {
   const [userName, setUserName] = useState<string | null>(null);
   const [showBackConfirm, setShowBackConfirm] = useState(false);
   const [wordCount, setWordCount] = useState(0);
-  const { startTour } = useTourGuide();
 
   useEffect(() => {
     const storedUserId = localStorage.getItem("userId");
@@ -48,42 +46,6 @@ export default function QuestionsPage() {
 
   // Get current question
   const currentQuestion = questions[currentQuestionIndex];
-
-  // Initialize tour guide
-  useEffect(() => {
-    if (questions.length > 0 && currentQuestion) {
-      startTour(
-        {
-          steps: [
-            {
-              title: "Welcome to the Questions",
-              content:
-                "Here you'll provide your expert medical assessment for each AI response.",
-              target: "#question-card",
-            },
-            {
-              title: "Your Clinical Assessment",
-              content:
-                "Write your professional evaluation of the AI's response in this text area.",
-              target: "#answer-textarea",
-            },
-            {
-              title: "Continue to Classification",
-              content:
-                "After providing your assessment, click here to proceed to the detailed classification step.",
-              target: "#continue-button",
-            },
-          ],
-          completeOnFinish: true,
-          nextLabel: "Next",
-          prevLabel: "Back",
-          finishLabel: "Got it!",
-          closeButton: true,
-        },
-        "questions-tour-seen",
-      );
-    }
-  }, [questions, currentQuestion, startTour]);
 
   // Update progress when questions change
   useEffect(() => {

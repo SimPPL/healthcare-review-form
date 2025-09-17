@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
         `User record has no questions: ${JSON.stringify(userRecord)}`,
       );
     } else {
-      // Safeguard: Limit to maximum 20 questions
+      // Strict safeguard: Limit to maximum 20 questions
       const MAX_QUESTIONS = 20;
       const questionEntries = Object.entries<QuestionAssignment>(
         userRecord.questions,
@@ -65,8 +65,8 @@ export async function GET(request: NextRequest) {
       const limitedQuestionEntries = questionEntries.slice(0, MAX_QUESTIONS);
 
       if (questionEntries.length > MAX_QUESTIONS) {
-        console.warn(
-          `User ${userId} has ${questionEntries.length} questions assigned, limiting to ${MAX_QUESTIONS}`,
+        console.error(
+          `CRITICAL: User ${userId} has ${questionEntries.length} questions assigned, which exceeds maximum of ${MAX_QUESTIONS}. This indicates a bug in question assignment logic. Limiting to ${MAX_QUESTIONS}.`,
         );
       }
 
@@ -125,8 +125,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log(`Returning ${questions.length} questions for user ${userId}`);
-    return NextResponse.json({ questions });
+    // Final validation: ensure we never return more than 20 questions
+    const MAX_QUESTIONS = 20;
+    const finalQuestions = questions.slice(0, MAX_QUESTIONS);
+
+    if (questions.length > MAX_QUESTIONS) {
+      console.error(
+        `CRITICAL: Attempted to return ${questions.length} questions for user ${userId}, limiting to ${MAX_QUESTIONS}`,
+      );
+    }
+
+    console.log(
+      `Returning ${finalQuestions.length} questions for user ${userId}`,
+    );
+    return NextResponse.json({ questions: finalQuestions });
   } catch (error) {
     console.error("Unhandled error in GET /api/get-assigned:", error);
     return NextResponse.json(

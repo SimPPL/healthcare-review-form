@@ -82,11 +82,20 @@ export async function POST(request: NextRequest) {
             `User ${userId} already has ${existingQuestionsCount} questions assigned`,
           );
 
-          // Return immediately with existing assignment info
+          // Ensure user has exactly 20 questions or fewer
+          const MAX_QUESTIONS = 20;
+          if (existingQuestionsCount > MAX_QUESTIONS) {
+            console.warn(
+              `User ${userId} has ${existingQuestionsCount} questions, which exceeds maximum of ${MAX_QUESTIONS}. This should not happen.`,
+            );
+            // Return the count as is but log the warning
+          }
+
+          // Return immediately with existing assignment info - always return for existing users with questions
           return NextResponse.json({
             userId,
-            assignedQuestions: existingQuestionsCount,
-            message: `Welcome back! You have ${existingQuestionsCount} questions assigned.`,
+            assignedQuestions: Math.min(existingQuestionsCount, MAX_QUESTIONS),
+            message: `Welcome back! You have ${Math.min(existingQuestionsCount, MAX_QUESTIONS)} questions assigned.`,
             isReturningUser: true,
           });
         }
@@ -231,12 +240,13 @@ export async function POST(request: NextRequest) {
 
     if (Object.keys(questionsMap).length > 0) {
       if (existingUser) {
-        // This should not happen anymore since we return early for existing users
+        // This should not happen anymore since we return early for existing users with questions
         // But keeping as fallback - only assign questions if user has none
         const existingQuestionsCount = existingUser.questions
           ? Object.keys(existingUser.questions).length
           : 0;
 
+        // Strict check: only assign if user has exactly 0 questions
         if (existingQuestionsCount === 0) {
           try {
             const updateCommand = new UpdateCommand({
@@ -245,7 +255,7 @@ export async function POST(request: NextRequest) {
               UpdateExpression:
                 "SET questions = :questions, updated_at = :updatedAt, user_name = :name, user_profession = :profession",
               ExpressionAttributeValues: {
-                ":questions": questionsMap, // Only assign new questions, don't merge
+                ":questions": questionsMap, // Only assign exactly these questions, don't merge
                 ":updatedAt": new Date().toISOString(),
                 ":name": name,
                 ":profession": profession,
@@ -268,8 +278,15 @@ export async function POST(request: NextRequest) {
           }
         } else {
           console.log(
-            `User ${userId} already has ${existingQuestionsCount} questions, skipping assignment`,
+            `User ${userId} already has ${existingQuestionsCount} questions, skipping assignment to prevent exceeding limit`,
           );
+          // Return early to prevent any further assignment
+          return NextResponse.json({
+            userId,
+            assignedQuestions: existingQuestionsCount,
+            message: `Welcome back! You have ${existingQuestionsCount} questions assigned.`,
+            isReturningUser: true,
+          });
         }
       } else {
         // Create new user
