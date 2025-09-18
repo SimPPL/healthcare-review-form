@@ -326,9 +326,7 @@ export default function ClassificationPage() {
 
     // Validate rating is provided
     if (rating === null) {
-      setError(
-        "Please provide a rating for the AI response before proceeding.",
-      );
+      setError("Please provide a rating for the response before proceeding.");
       return;
     }
 
@@ -479,7 +477,7 @@ export default function ClassificationPage() {
             className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6"
           >
             <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed max-w-6xl">
-              As a medical expert, please help us analyze the AI's clinical
+              As a medical expert, please help us analyze our clinical
               responses. Complete the three steps below for this question:
             </p>
             <div className="mt-4 space-y-2">
@@ -487,22 +485,21 @@ export default function ClassificationPage() {
                 <span className="font-semibold text-blue-600 dark:text-blue-400">
                   Step 1:
                 </span>{" "}
-                Based on the AI's responses, help us rate the quality of the
-                AI's clinical assessment.
+                Based on our responses, help us rate the quality of our clinical
+                assessment.
               </p>
               <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed">
                 <span className="font-semibold text-blue-600 dark:text-blue-400">
                   Step 2:
                 </span>{" "}
-                Select 10-15 qualities that characterize the AI's medical
-                assessment.
+                Select 10-15 qualities that characterize our medical assessment.
               </p>
               <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed">
                 <span className="font-semibold text-blue-600 dark:text-blue-400">
                   Step 3:
                 </span>{" "}
-                Categorize these qualities to help us understand the AI's
-                strengths and limitations.
+                Categorize these qualities to help us understand the strengths
+                and limitations.
               </p>
             </div>
           </div>
@@ -628,7 +625,7 @@ export default function ClassificationPage() {
                 <div className="space-y-2">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-0">
                     <h4 className="font-semibold text-foreground flex items-center text-md">
-                      AI's Response
+                      Our Response
                     </h4>
                     <span className="text-xs text-muted-foreground">
                       {wordCounts.ai} words
@@ -649,7 +646,7 @@ export default function ClassificationPage() {
                     <div className="w-6 h-6 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-sm font-bold">
                       1
                     </div>
-                    Step 1: Rate the quality of the AI's clinical assessment
+                    Step 1: Rate the quality of our clinical assessment
                   </h4>
                   <div className="flex items-center justify-center space-x-1 sm:space-x-2">
                     <span className="text-xs sm:text-sm text-muted-foreground w-8 sm:w-12 text-right">
@@ -700,9 +697,9 @@ export default function ClassificationPage() {
                       Step 2: Identify Key Qualities
                     </h2>
                     <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
-                      Select 10-15 qualities that characterize the AI's
-                      response. Click the <Pencil className="inline h-3 w-3" />{" "}
-                      to modify if needed.
+                      Select 10-15 qualities that characterize our response.
+                      Click the <Pencil className="inline h-3 w-3" /> to modify
+                      if needed.
                     </p>
                   </div>
                   <div className="space-y-1 p-2 sm:p-3 border rounded-lg max-h-[300px] sm:max-h-[400px] md:max-h-[500px] overflow-y-auto bg-white dark:bg-zinc-900">
@@ -790,7 +787,7 @@ export default function ClassificationPage() {
                     </h2>
                     <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
                       Drag each selected quality into the most appropriate
-                      medical category to help us understand the AI's clinical
+                      medical category to help us understand our clinical
                       strengths and weaknesses.
                     </p>
                   </div>
@@ -855,7 +852,7 @@ export default function ClassificationPage() {
                   </label>
                   <Textarea
                     id="feedback"
-                    placeholder="Share any additional insights about this AI response..."
+                    placeholder="Share any additional insights about this response..."
                     value={feedback}
                     onChange={(e) => setFeedback(e.target.value)}
                     className="min-h-[100px] text-sm sm:text-base resize-y"

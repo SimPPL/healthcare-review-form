@@ -10,7 +10,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Healthcare Review Form",
-  description: "Evaluate AI responses to medical questions",
+  description: "Evaluate medical responses to clinical questions",
   generator: "v0.app",
   icons: {
     icon: "/logo.png",

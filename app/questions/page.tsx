@@ -255,7 +255,7 @@ export default function QuestionsPage() {
           </h1>
           <p className="text-sm sm:text-base md:text-lg text-slate-600 dark:text-slate-400">
             Welcome, {userName}! Please provide your expert clinical assessment
-            for each AI response.
+            for each response from our dataset.
           </p>
         </div>
 

@@ -46,7 +46,7 @@ export interface UserResponse {
   submitted_at?: string;
 
   // Rating information
-  llm_rating?: number; // User's rating of the AI response
+  llm_rating?: number; // User's rating of the response
 
   // Rubric / classification fields
   rubrics: string[]; // Available rubrics for this question
@@ -99,7 +99,7 @@ export interface UserResponseRecord {
     }
   >; // questionId -> answer data
 
-  // User's ratings of AI responses
+  // User's ratings of responses
   ratings: Record<string, number>; // questionId -> rating
 
   // Classification data

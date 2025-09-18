@@ -1,6 +1,6 @@
 # Healthcare Review Form
 
-A Next.js application for evaluating AI responses to medical questions by medical professionals.
+A Next.js application for evaluating clinical responses to medical questions by medical professionals.
 
 ## Setup Instructions
 
@@ -51,7 +51,7 @@ Visit `http://localhost:3000` to start the evaluation process.
 
 1. **User Info**: Enter name, medical profession, and optional details
 2. **Questions**: Answer assigned clinical questions with your approach
-3. **Rating**: Rate the AI responses compared to your answers (0-10 scale)
+3. **Rating**: Rate the clinical responses compared to your answers (0-10 scale)
 4. **Thank You**: Confirmation of completed evaluation
 
 ## Troubleshooting

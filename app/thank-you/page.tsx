@@ -80,7 +80,7 @@ export default function ThankYouPage() {
               <ul className="text-xs sm:text-sm text-muted-foreground space-y-1">
                 <li>• Your responses have been saved to our database</li>
                 <li>
-                  • Your evaluations will help improve AI medical responses
+                  • Your evaluations will help improve medical response quality
                 </li>
                 <li>• All data is stored securely and anonymously</li>
               </ul>
@@ -107,7 +107,7 @@ export default function ThankYouPage() {
 
             <div className="pt-4 border-t">
               <p className="text-xs sm:text-sm text-muted-foreground">
-                Thank you for contributing to medical AI research and helping
+                Thank you for contributing to medical research and helping
                 improve healthcare technology.
               </p>
             </div>
