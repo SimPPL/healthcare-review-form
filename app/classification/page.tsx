@@ -30,7 +30,6 @@ import {
   DragEndEvent,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { useTourGuide } from "@/hooks/useTourGuide";
 
 // --- Helper Components for Drag-and-Drop ---
 
@@ -113,7 +112,6 @@ export default function ClassificationPage() {
   } | null>(null);
   const [feedback, setFeedback] = useState<string>("");
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
-  const { startTour } = useTourGuide();
 
   // Rating and editing state
   const [rating, setRating] = useState<number | null>(null);
@@ -214,48 +212,6 @@ export default function ClassificationPage() {
       setIsLoading(false);
     }
   };
-
-  // Initialize tour guide
-  useEffect(() => {
-    if (currentQuestion && !isLoading) {
-      startTour(
-        {
-          steps: [
-            {
-              title: "Welcome to Classification",
-              content:
-                "Here you'll analyze the AI's response in three structured steps.",
-              target: "#classification-intro",
-            },
-            {
-              title: "Step 1: Rate the AI Response",
-              content:
-                "First, provide a numerical rating for the quality of the AI's clinical assessment.",
-              target: "#rating-section",
-            },
-            {
-              title: "Step 2: Select Key Qualities",
-              content:
-                "Choose 10-15 qualities that best characterize the AI's medical response.",
-              target: "#qualities-section",
-            },
-            {
-              title: "Step 3: Categorize Qualities",
-              content:
-                "Drag your selected qualities into appropriate medical categories to complete the analysis.",
-              target: "#categorization-section",
-            },
-          ],
-          completeOnFinish: true,
-          nextLabel: "Next",
-          prevLabel: "Back",
-          finishLabel: "Got it!",
-          closeButton: true,
-        },
-        "classification-tour-seen",
-      );
-    }
-  }, [currentQuestion, isLoading, startTour]);
 
   const countWords = (text: string): number => {
     return text.trim() === "" ? 0 : text.trim().split(/\s+/).length;

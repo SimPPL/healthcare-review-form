@@ -5,7 +5,7 @@ import { GeistMono } from "geist/font/mono";
 import { Analytics } from "@vercel/analytics/next";
 import { Suspense } from "react";
 import { NavigationGuard } from "@/components/navigation-guard";
-import { TourDevControls } from "@/components/tour-dev-controls";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -29,7 +29,7 @@ export default function RootLayout({
         <Suspense fallback={null}>
           <NavigationGuard>{children}</NavigationGuard>
         </Suspense>
-        <TourDevControls />
+
         <Analytics />
       </body>
     </html>
