@@ -32,13 +32,6 @@ export const tourSteps: Tour[] = [
         icon: "🤖",
         side: "top",
       },
-      {
-        title: "Navigation",
-        content: "Use these buttons to navigate between questions or proceed to classification.",
-        selector: "#navigation-buttons",
-        icon: "🧭",
-        side: "top",
-      },
     ],
   },
   {
