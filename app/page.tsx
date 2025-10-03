@@ -50,7 +50,6 @@ export default function HomePage() {
       return;
     }
 
-    // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email.trim())) {
       setError("Please enter a valid email address");
@@ -78,18 +77,14 @@ export default function HomePage() {
         }),
       });
 
-      // Check if response is OK before trying to parse JSON
       if (!response.ok) {
-        // Try to get error text first
         const errorText = await response.text();
         let errorMessage = "Failed to assign questions";
 
         try {
-          // Try to parse error text as JSON
           const errorData = JSON.parse(errorText);
           errorMessage = errorData.error || errorMessage;
         } catch (parseError) {
-          // If parsing fails, use the raw text (truncated if too long)
           errorMessage =
             errorText.length > 100
               ? `${errorText.substring(0, 100)}...`
@@ -99,33 +94,14 @@ export default function HomePage() {
         throw new Error(errorMessage);
       }
 
-      // If response is OK, then parse JSON
       const data = await response.json();
 
-      // Store user ID in localStorage for the session
       localStorage.setItem("userId", data.userId);
       localStorage.setItem("userName", formData.name.trim());
 
-      // Navigate to questions page
       router.push("/questions");
     } catch (err) {
-      console.error("Form submission error:", err);
       setError(err instanceof Error ? err.message : "An error occurred");
-
-      // Try a diagnostics API call to check AWS credentials
-      try {
-        const diagResponse = await fetch("/api/test-aws");
-        const diagData = await diagResponse.json();
-        console.log("AWS Diagnostics:", diagData);
-
-        if (!diagData.success) {
-          setError(
-            `AWS Configuration Error: ${diagData.error || "Unknown error"}`,
-          );
-        }
-      } catch (diagErr) {
-        console.error("Diagnostics API error:", diagErr);
-      }
     } finally {
       setIsLoading(false);
     }

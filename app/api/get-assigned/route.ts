@@ -13,14 +13,11 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get("user_id");
 
     if (!userId) {
-      console.error("GET /api/get-assigned: Missing user_id");
       return NextResponse.json(
         { error: "User ID is required" },
         { status: 400 },
       );
     }
-
-    console.log(`Fetching assigned questions for user_id: ${userId}`);
 
     let userResult: { Item?: any };
     try {
@@ -32,7 +29,6 @@ export async function GET(request: NextRequest) {
       });
       userResult = await dynamoDb.send(userCommand);
     } catch (err) {
-      console.error("Failed to fetch user record from RESPONSES_TABLE:", err);
       return NextResponse.json(
         {
           error: "Failed to fetch user record",
@@ -45,7 +41,6 @@ export async function GET(request: NextRequest) {
     }
 
     if (!userResult.Item) {
-      console.warn(`No response record found for user_id: ${userId}`);
       return NextResponse.json({ questions: [] }, { status: 200 });
     }
 
@@ -53,9 +48,6 @@ export async function GET(request: NextRequest) {
     const questions: any[] = [];
 
     if (!userRecord.questions) {
-      console.warn(
-        `User record has no questions: ${JSON.stringify(userRecord)}`,
-      );
     } else {
       for (const [
         questionId,
@@ -80,34 +72,41 @@ export async function GET(request: NextRequest) {
               : JSON.parse(datasetResult.Item.rubrics);
           }
         } catch (err) {
-          console.error(
-            `Failed to fetch rubrics for question ${questionId}:`,
-            err,
-          );
         }
 
-        const userAnswer = userRecord.answers?.[questionId]?.user_answer || "";
+        const userAnswer =
+          userRecord.edited_answer?.[questionId] ||
+          userRecord.unbiased_answer?.[questionId] ||
+          userRecord.answers?.[questionId]?.user_answer ||
+          "";
 
-        if (!userAnswer) {
-          console.log(`Question ${questionId} has no user answer yet`);
-        }
+        const selectedRubrics =
+          userRecord.edited_rubrics?.[questionId] ||
+          userRecord.list_of_rubrics_picked?.[questionId] ||
+          null;
+        const hasEditedRubrics = !!userRecord.edited_rubrics?.[questionId];
 
         const typedQuestionData = questionData as QuestionAssignment;
 
         questions.push({
           user_id: userId,
           user_name: userRecord.user_name || "",
-          user_profession: userRecord.user_profession || "",
+          user_profession:
+            userRecord.medical_profession || userRecord.user_profession || "",
           email: userRecord.email || "",
           assigned_at:
             typedQuestionData.assigned_at || new Date().toISOString(),
           question_id: questionId,
           question_text: typedQuestionData.question_text,
           llm_response: typedQuestionData.llm_response,
-          status: typedQuestionData.status || "assigned",
+          status:
+            userRecord.status?.[questionId] ||
+            typedQuestionData.status ||
+            "assigned",
           user_answer: userAnswer,
-          rating: userRecord.ratings?.[questionId] || null,
           rubrics,
+          selected_rubrics: selectedRubrics,
+          has_edited_rubrics: hasEditedRubrics,
           rubric_scores: typedQuestionData.rubric_scores || {},
           axis_scores: typedQuestionData.axis_scores || {},
           classification: typedQuestionData.classification || "",
@@ -115,14 +114,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log(`Returning ${questions.length} questions for user ${userId}`);
     return NextResponse.json({ questions });
   } catch (error) {
-    console.error("Unhandled error in GET /api/get-assigned:", error);
+    console.error("Error in get-assigned:", error);
     return NextResponse.json(
       {
         error: "Internal server error",
         details: {
+          message: error instanceof Error ? error.message : "Unknown error",
+          stack: error instanceof Error ? error.stack : undefined,
           tables: {
             datasetTable: DATASET_TABLE,
             responsesTable: RESPONSES_TABLE,

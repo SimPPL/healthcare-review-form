@@ -48,7 +48,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user already exists by email
     let userId = uuidv4();
     let existingUser = null;
 
@@ -66,13 +65,8 @@ export async function POST(request: NextRequest) {
       if (queryResult.Items && queryResult.Items.length > 0) {
         existingUser = queryResult.Items[0];
         userId = existingUser.user_id;
-        console.log(
-          `Found existing user with email ${email}, user_id: ${userId}`,
-        );
       }
     } catch (error) {
-      console.error("Error checking for existing user:", error);
-      // Continue with new user creation if check fails
     }
 
     let scanResult;
@@ -84,7 +78,6 @@ export async function POST(request: NextRequest) {
       });
       scanResult = await dynamoDb.send(scanCommand);
     } catch (error) {
-      console.error("Error scanning dataset table:", error);
       return NextResponse.json(
         {
           error: `Database connection failed: ${error instanceof Error ? error.message : String(error)}. Please check your AWS configuration.`,
@@ -113,12 +106,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Shuffle questions to ensure different users get different questions
     const shuffledQuestions = [...availableQuestions].sort(
       () => Math.random() - 0.5,
     );
 
-    const uniqueQuestions: Question[] = [];
+    let uniqueQuestions: Question[] = [];
     const seenQuestionIds = new Set<string>();
 
     for (const question of shuffledQuestions) {
@@ -141,10 +133,26 @@ export async function POST(request: NextRequest) {
     const assignedQuestions: Question[] = [];
     const processedQuestionIds: string[] = [];
 
-    console.log(
-      "[v0] Assigning questions:",
-      uniqueQuestions.map((q) => q.question_id),
-    );
+    // Check existing user limits early
+    if (existingUser) {
+      const existingQuestionsAssigned = existingUser.questions_assigned || [];
+      const maxQuestions = existingUser.max_questions_assigned || 20;
+
+      // Check if user already has max questions assigned
+      if (existingQuestionsAssigned.length >= maxQuestions) {
+        return NextResponse.json({
+          userId,
+          assignedQuestions: existingQuestionsAssigned.length,
+          message: `You already have ${existingQuestionsAssigned.length} questions assigned. Please complete your current assignments.`,
+          isReturningUser: true,
+          reachedLimit: true,
+        });
+      }
+
+      // Calculate how many more questions we can assign
+      const remainingSlots = maxQuestions - existingQuestionsAssigned.length;
+      uniqueQuestions = uniqueQuestions.slice(0, remainingSlots);
+    }
 
     for (const question of uniqueQuestions) {
       if (
@@ -152,7 +160,6 @@ export async function POST(request: NextRequest) {
         !question.question_text ||
         !question.llm_response
       ) {
-        console.error("Invalid question data:", question);
         continue;
       }
 
@@ -170,15 +177,9 @@ export async function POST(request: NextRequest) {
 
         const dynamoDb = getDynamoDbClient();
         await dynamoDb.send(updateCommand);
-        console.log(`Successfully updated question ${question.question_id}`);
       } catch (error) {
-        console.error(
-          `Error updating question ${question.question_id}:`,
-          error,
-        );
       }
 
-      // Always add valid questions to assignment, regardless of update success
       processedQuestionIds.push(question.question_id);
     }
 
@@ -208,26 +209,41 @@ export async function POST(request: NextRequest) {
 
     if (Object.keys(questionsMap).length > 0) {
       if (existingUser) {
-        // Update existing user with new questions
         try {
+          const newQuestionIds = Object.keys(questionsMap);
+          const existingQuestionsAssigned =
+            existingUser.questions_assigned || [];
+
+          const updatedQuestionsAssigned = [
+            ...new Set([...existingQuestionsAssigned, ...newQuestionIds]),
+          ];
+
+          const newStatuses = Object.fromEntries(
+            newQuestionIds.map((id) => [id, "assigned" as const]),
+          );
+
           const updateCommand = new UpdateCommand({
             TableName: RESPONSES_TABLE,
             Key: { user_id: userId },
             UpdateExpression:
-              "SET questions = :questions, updated_at = :updatedAt, user_name = :name, user_profession = :profession",
+              "SET questions = :questions, questions_assigned = :questionsAssigned, #s = :status, updated_at = :updatedAt, user_name = :userName, medical_profession = :profession, max_questions_assigned = if_not_exists(max_questions_assigned, :defaultMax)",
+            ExpressionAttributeNames: {
+              "#s": "status",
+            },
             ExpressionAttributeValues: {
               ":questions": { ...existingUser.questions, ...questionsMap },
+              ":questionsAssigned": updatedQuestionsAssigned,
+              ":status": { ...existingUser.status, ...newStatuses },
               ":updatedAt": new Date().toISOString(),
-              ":name": name,
+              ":userName": name,
               ":profession": profession,
+              ":defaultMax": 20,
             },
           });
 
           const dynamoDb = getDynamoDbClient();
           await dynamoDb.send(updateCommand);
-          console.log(`Updated existing user ${userId} with new questions`);
         } catch (error) {
-          console.error(`Error updating existing user record:`, error);
           return NextResponse.json(
             {
               error: "Failed to update user record. Please try again.",
@@ -236,20 +252,29 @@ export async function POST(request: NextRequest) {
           );
         }
       } else {
-        // Create new user
+        const questionIds = Object.keys(questionsMap);
         const userResponseItem: UserResponseRecord = {
           user_id: userId,
           user_name: name,
-          user_profession: profession,
           email: email,
-          phone: phone || "",
+          medical_profession: profession,
+          phone_number: phone || "",
           clinical_experience: clinicalExperience || "",
           ai_exposure: aiExposure || "",
-          questions: questionsMap,
-          answers: {}, // Will be populated as user answers questions
-          ratings: {}, // Will be populated as user rates responses
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
+          questions_assigned: questionIds,
+          max_questions_assigned: 20,
+          questions_answered: 0,
+          unbiased_answer: {},
+          edited_answer: {},
+          status: Object.fromEntries(
+            questionIds.map((id: string) => [id, "assigned" as const]),
+          ),
+          list_of_rubrics_picked: {},
+          edited_rubrics: {},
+          additional_feedback: {},
+          questions: questionsMap,
         };
 
         try {
@@ -260,9 +285,7 @@ export async function POST(request: NextRequest) {
 
           const dynamoDb = getDynamoDbClient();
           await dynamoDb.send(putCommand);
-          console.log(`Created new user ${userId}`);
         } catch (error) {
-          console.error(`Error creating user response record:`, error);
           return NextResponse.json(
             {
               error: "Failed to create user record. Please try again.",
@@ -274,7 +297,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (assignedQuestions.length === 0) {
-      console.error("No questions were assigned - this should not happen");
       return NextResponse.json(
         {
           error:
@@ -283,8 +305,6 @@ export async function POST(request: NextRequest) {
         { status: 500 },
       );
     }
-
-    console.log(`Successfully assigned ${assignedQuestions.length} questions`);
 
     return NextResponse.json({
       userId,
@@ -295,7 +315,6 @@ export async function POST(request: NextRequest) {
       isReturningUser: !!existingUser,
     });
   } catch (error) {
-    console.error("Error assigning questions:", error);
     const missingVars = [];
     if (!process.env.DATASET_TABLE && process.env.NODE_ENV === "development")
       missingVars.push("DATASET_TABLE");

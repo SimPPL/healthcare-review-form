@@ -5,7 +5,7 @@ import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, questionId, userAnswer } = body;
+    const { userId, questionId, userAnswer, isEdit = false } = body;
 
     if (!userId || !questionId || !userAnswer) {
       return NextResponse.json(
@@ -15,32 +15,45 @@ export async function POST(request: NextRequest) {
     }
 
     const dynamoDb = getDynamoDbClient();
+
+    const answerField = isEdit ? "edited_answer" : "unbiased_answer";
+
+    const baseExpressionAttributeValues: Record<string, any> = {
+      ":answer": userAnswer,
+      ":statusValue": "answered",
+      ":updatedAt": new Date().toISOString(),
+    };
+
+    if (!isEdit) {
+      baseExpressionAttributeValues[":zero"] = 0;
+      baseExpressionAttributeValues[":increment"] = 1;
+    }
+
     const updateCommand = new UpdateCommand({
       TableName: RESPONSES_TABLE,
       Key: {
         user_id: userId,
       },
-      UpdateExpression:
-        "SET answers.#qid = :answerData, updated_at = :updatedAt",
+      UpdateExpression: isEdit
+        ? `SET ${answerField}.#qid = :answer, #status.#qid = :statusValue, updated_at = :updatedAt`
+        : `SET ${answerField}.#qid = :answer, #status.#qid = :statusValue, updated_at = :updatedAt, questions_answered = if_not_exists(questions_answered, :zero) + :increment`,
       ExpressionAttributeNames: {
         "#qid": questionId,
+        "#status": "status",
       },
-      ExpressionAttributeValues: {
-        ":answerData": {
-          user_answer: userAnswer,
-          status: "answered",
-          answered_at: new Date().toISOString(),
-        },
-        ":updatedAt": new Date().toISOString(),
-      },
+      ExpressionAttributeValues: baseExpressionAttributeValues,
     });
 
     await dynamoDb.send(updateCommand);
     return NextResponse.json({ message: "Answer saved successfully" });
   } catch (error) {
-    console.error("Error saving answer:", error);
+    console.error("Error in save-answer:", error);
     return NextResponse.json(
-      { error: "Failed to save answer. Please try again." },
+      { 
+        error: "Failed to save answer. Please try again.",
+        details: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 },
     );
   }

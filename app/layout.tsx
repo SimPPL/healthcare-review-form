@@ -5,6 +5,7 @@ import { GeistMono } from "geist/font/mono";
 import { Analytics } from "@vercel/analytics/next";
 import { Suspense } from "react";
 import { NavigationGuard } from "@/components/navigation-guard";
+import { NextStepProvider } from "nextstepjs";
 
 import "./globals.css";
 
@@ -26,9 +27,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
-        <Suspense fallback={null}>
-          <NavigationGuard>{children}</NavigationGuard>
-        </Suspense>
+        <NextStepProvider>
+          <Suspense fallback={null}>
+            <NavigationGuard>{children}</NavigationGuard>
+          </Suspense>
+        </NextStepProvider>
 
         <Analytics />
       </body>

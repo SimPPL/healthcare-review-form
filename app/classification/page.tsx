@@ -5,92 +5,17 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Loader2,
-  ArrowLeft,
-  ArrowRight,
-  Pencil,
-  Check,
-  X,
-  GripVertical,
-  ListChecks,
-  ArrowDownUp,
-} from "lucide-react";
+import { Loader2, ArrowLeft, ArrowRight, HelpCircle } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { NextStep, useNextStep } from "nextstepjs";
+import { tourSteps } from "@/lib/tour-steps";
+import CustomCard from "@/components/tour-card";
+
 import type { UserResponse } from "@/types";
-import {
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  useDraggable,
-  useDroppable,
-  DragEndEvent,
-} from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
-
-// --- Helper Components for Drag-and-Drop ---
-
-function DraggableQuality({
-  id,
-  children,
-}: {
-  id: string;
-  children: React.ReactNode;
-}) {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id });
-  const style = {
-    transform: CSS.Translate.toString(transform),
-    touchAction: "none",
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      className="mb-1 p-1.5 sm:p-2 bg-white dark:bg-zinc-800 border rounded-lg shadow-sm cursor-grab text-xs sm:text-sm"
-      style={style}
-    >
-      {children}
-    </div>
-  );
-}
-
-function CategoryDropzone({
-  id,
-  title,
-  children,
-  isOver,
-}: {
-  id: string;
-  title: string;
-  children: React.ReactNode;
-  isOver: boolean;
-}) {
-  const { setNodeRef } = useDroppable({ id });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`border-2 rounded-xl p-2 sm:p-3 md:p-4 transition-all duration-200 min-h-[100px] sm:min-h-[120px] md:min-h-[150px] flex flex-col ${
-        isOver
-          ? "bg-[#f8f5ff] border-[var(--color-purple-muted-border)] border-dashed"
-          : "bg-slate-50 dark:bg-zinc-900/50 border-transparent"
-      }`}
-    >
-      <h3 className="font-semibold text-xs sm:text-sm mb-1 sm:mb-2">{title}</h3>
-      <div className="flex-1">{children}</div>
-    </div>
-  );
-}
-
-// --- Main Page Component ---
 
 export default function ClassificationPage() {
   const router = useRouter();
+  const { startNextStep } = useNextStep();
   const [currentQuestion, setCurrentQuestion] = useState<UserResponse | null>(
     null,
   );
@@ -100,25 +25,16 @@ export default function ClassificationPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasSeenTour, setHasSeenTour] = useState(false);
 
-  // Single question state
-  const [selectedQualities, setSelectedQualities] = useState<string[]>([]);
-  const [qualityCategories, setQualityCategories] = useState<
-    Record<string, string>
+  const [qualityPassFail, setQualityPassFail] = useState<
+    Record<string, "pass" | "fail" | "">
   >({});
-  const [editing, setEditing] = useState<{
-    original: string;
-    current: string;
-  } | null>(null);
+  const [qualityAxes, setQualityAxes] = useState<Record<string, string>>({});
+  const [editedRubrics, setEditedRubrics] = useState<Record<string, string>>(
+    {},
+  );
   const [feedback, setFeedback] = useState<string>("");
-  const [activeDragId, setActiveDragId] = useState<string | null>(null);
-
-  // Rating and editing state
-  const [rating, setRating] = useState<number | null>(null);
-  const [isSavingRating, setIsSavingRating] = useState(false);
-  const [editingAnswer, setEditingAnswer] = useState(false);
-  const [editedAnswer, setEditedAnswer] = useState<string>("");
-  const [originalAnswer, setOriginalAnswer] = useState<string>("");
   const [wordCounts, setWordCounts] = useState<{ user: number; ai: number }>({
     user: 0,
     ai: 0,
@@ -130,12 +46,15 @@ export default function ClassificationPage() {
     "Completeness",
     "Context Awareness",
     "Terminology",
+    "Unclassified",
   ];
 
   useEffect(() => {
     try {
       const storedUserId = localStorage.getItem("userId");
       const storedUserName = localStorage.getItem("userName");
+      const tourSeen = localStorage.getItem("classificationTourSeen");
+
 
       if (!storedUserId) {
         router.push("/");
@@ -143,14 +62,23 @@ export default function ClassificationPage() {
       }
       setUserId(storedUserId);
       setUserName(storedUserName || null);
+      setHasSeenTour(!!tourSeen);
 
-      // Get current question info from localStorage
       const currentQuestionInfo = localStorage.getItem(
         "currentQuestionForClassification",
       );
       if (currentQuestionInfo) {
         const { questionId, questionIndex } = JSON.parse(currentQuestionInfo);
         setCurrentQuestionIndex(questionIndex);
+        
+        if (questionIndex === 0 && !tourSeen) {
+          setTimeout(() => {
+            startNextStep("classificationTour");
+            localStorage.setItem("classificationTourSeen", "true");
+            setHasSeenTour(true);
+          }, 1000);
+        }
+        
         fetchCurrentQuestion(storedUserId, questionId);
       } else {
         setError("No question selected for classification.");
@@ -160,7 +88,7 @@ export default function ClassificationPage() {
       setError("Failed to access user information.");
       setIsLoading(false);
     }
-  }, [router]);
+  }, [router, startNextStep]);
 
   const fetchCurrentQuestion = async (
     userIdParam: string,
@@ -175,7 +103,6 @@ export default function ClassificationPage() {
         throw new Error(data.error || "Invalid API response");
       }
 
-      // Find the specific question
       const question = data.questions.find(
         (q: UserResponse) => q.question_id === questionId,
       );
@@ -183,7 +110,6 @@ export default function ClassificationPage() {
         throw new Error("Question not found");
       }
 
-      // Enhance with stored data
       const storedAnswer = localStorage.getItem(`answer_${questionId}`);
       const storedRating = localStorage.getItem(`rating_${questionId}`);
 
@@ -198,16 +124,12 @@ export default function ClassificationPage() {
 
       setCurrentQuestion(enhancedQuestion);
 
-      // Initialize rating and word counts
-      setRating(storedRating ? parseInt(storedRating, 10) : null);
-      setEditedAnswer(enhancedQuestion.user_answer || "");
-      setOriginalAnswer(enhancedQuestion.user_answer || "");
       setWordCounts({
         user: countWords(enhancedQuestion.user_answer || ""),
         ai: countWords(enhancedQuestion.llm_response || ""),
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load question");
+      setError(err instanceof Error ? err.message : "Failed to fetch question");
     } finally {
       setIsLoading(false);
     }
@@ -217,97 +139,39 @@ export default function ClassificationPage() {
     return text.trim() === "" ? 0 : text.trim().split(/\s+/).length;
   };
 
-  const handleRatingClick = (ratingValue: number) => {
-    setRating(ratingValue);
-    setIsSavingRating(true);
-
-    try {
-      localStorage.setItem(
-        `rating_${currentQuestion?.question_id}`,
-        ratingValue.toString(),
-      );
-    } catch (err) {
-      console.error("Failed to save rating:", err);
-    } finally {
-      setIsSavingRating(false);
-    }
-  };
-
-  const handleSaveEditedAnswer = () => {
-    if (!currentQuestion || !editedAnswer.trim()) return;
-
-    localStorage.setItem(
-      `answer_${currentQuestion.question_id}`,
-      editedAnswer.trim(),
-    );
-
-    // Track answer edit if it changed
-    if (editedAnswer.trim() !== originalAnswer.trim()) {
-      const editHistory = {
-        original_answer: originalAnswer,
-        edited_answer: editedAnswer.trim(),
-        edited_at: new Date().toISOString(),
-      };
-      localStorage.setItem(
-        `answer_edit_${currentQuestion.question_id}`,
-        JSON.stringify(editHistory),
-      );
-    }
-
-    setCurrentQuestion((prev) =>
-      prev ? { ...prev, user_answer: editedAnswer.trim() } : null,
-    );
-    setWordCounts((prev) => ({ ...prev, user: countWords(editedAnswer) }));
-    setEditingAnswer(false);
-  };
-
-  const toggleQualitySelection = (quality: string) => {
-    setSelectedQualities((prev) => {
-      if (prev.includes(quality)) {
-        // Remove from selected and from categories
-        setQualityCategories((prevCat) => {
-          const newCat = { ...prevCat };
-          delete newCat[quality];
-          return newCat;
-        });
-        return prev.filter((q) => q !== quality);
-      } else {
-        return [...prev, quality];
+  const handlePassFailSelection = (
+    quality: string,
+    selection: "pass" | "fail",
+  ) => {
+    setQualityPassFail((prev) => {
+      const currentSelection = prev[quality];
+      if (currentSelection === selection) {
+        const newState = { ...prev };
+        delete newState[quality];
+        return newState;
       }
+      return {
+        ...prev,
+        [quality]: selection,
+      };
     });
   };
 
-  const handleEditQuality = (quality: string) => {
-    setEditing({ original: quality, current: quality });
-  };
-
-  const handleSaveEdit = () => {
-    if (!editing) return;
-
-    // Update selected qualities
-    setSelectedQualities((prev) =>
-      prev.map((q) => (q === editing.original ? editing.current : q)),
-    );
-
-    // Update categories if the quality was categorized
-    if (qualityCategories[editing.original]) {
-      const category = qualityCategories[editing.original];
-      setQualityCategories((prev) => {
-        const newCat = { ...prev };
-        delete newCat[editing.original];
-        newCat[editing.current] = category;
-        return newCat;
+  const handleAxesSelection = (quality: string, selection: string) => {
+    if (CATEGORIES.includes(selection)) {
+      setQualityAxes((prev) => {
+        const currentSelection = prev[quality];
+        if (currentSelection === selection) {
+          const newState = { ...prev };
+          delete newState[quality];
+          return newState;
+        }
+        return {
+          ...prev,
+          [quality]: selection,
+        };
       });
     }
-
-    setEditing(null);
-  };
-
-  const assignToCategory = (quality: string, category: string) => {
-    setQualityCategories((prev) => ({
-      ...prev,
-      [quality]: category,
-    }));
   };
 
   const handleSubmit = async () => {
@@ -316,17 +180,36 @@ export default function ClassificationPage() {
       return;
     }
 
-    // Validate minimum 10 rubrics are selected
-    if (selectedQualities.length < 10) {
+    const completedRubrics =
+      currentQuestion.rubrics?.filter(
+        (quality) => qualityPassFail[quality] && qualityAxes[quality],
+      ) || [];
+
+    if (completedRubrics.length < 8) {
       setError(
-        `Please select at least 10 rubrics to proceed. Currently selected: ${selectedQualities.length}/10`,
+        `Please evaluate at least 8 rubrics. You have only completed ${completedRubrics.length}.`,
       );
       return;
     }
 
-    // Validate rating is provided
-    if (rating === null) {
-      setError("Please provide a rating for the response before proceeding.");
+    const missingPassFail = completedRubrics.filter(
+      (quality) => !qualityPassFail[quality],
+    );
+    const missingAxes = completedRubrics.filter(
+      (quality) => !qualityAxes[quality],
+    );
+
+    if (missingPassFail.length > 0) {
+      setError(
+        `Please select Pass/Fail for all evaluated rubrics. Missing for: ${missingPassFail.join(", ")}`,
+      );
+      return;
+    }
+
+    if (missingAxes.length > 0) {
+      setError(
+        `Please select an axis category for all evaluated rubrics. Missing for: ${missingAxes.join(", ")}`,
+      );
       return;
     }
 
@@ -334,113 +217,62 @@ export default function ClassificationPage() {
     setError("");
 
     try {
-      // Prepare data for this single question
       const questionData = {
-        [currentQuestion.question_id]: selectedQualities,
+        [currentQuestion.question_id]: completedRubrics,
       };
 
-      const categoryData = {
-        [currentQuestion.question_id]: qualityCategories,
+      const passFailData = {
+        [currentQuestion.question_id]: qualityPassFail,
+      };
+
+      const axesData = {
+        [currentQuestion.question_id]: qualityAxes,
       };
 
       const feedbackData = feedback
-        ? {
-            [currentQuestion.question_id]: feedback,
-          }
+        ? { [currentQuestion.question_id]: feedback }
         : {};
 
-      const editedQualities =
-        editing && editing.original !== editing.current
-          ? {
-              [editing.original]: editing.current,
-            }
-          : {};
+      const editedQualities = editedRubrics;
 
-      // Prepare answer edit history
-      const answerEditHistory: Record<string, any> = {};
-      const storedEditHistory = localStorage.getItem(
-        `answer_edit_${currentQuestion.question_id}`,
-      );
-      if (storedEditHistory) {
-        try {
-          const editData = JSON.parse(storedEditHistory);
-          answerEditHistory[currentQuestion.question_id] = [editData];
-        } catch (err) {
-          console.error("Failed to parse answer edit history:", err);
-        }
-      }
-
-      // Save rating first
-      const saveRatingResponse = await fetch("/api/save-rating", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId,
-          questionId: currentQuestion.question_id,
-          llmRating: rating,
-        }),
-      });
-
-      if (!saveRatingResponse.ok) {
-        throw new Error("Failed to save rating");
-      }
-
-      // Save classification data for this question
       const response = await fetch("/api/save-rubric-choices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId,
           selectedQualities: questionData,
-          qualityCategories: categoryData,
+          qualityPassFail: passFailData,
+          qualityCategories: axesData,
           editedQualities,
           feedback: feedbackData,
-          answerEditHistory,
+          isEdit: false,
         }),
       });
 
+      const data = await response.json();
       if (!response.ok) {
-        const data = await response.json();
         throw new Error(data.error || "Failed to save data");
       }
 
-      // Mark this question as classification completed
       localStorage.setItem(
         `classification_${currentQuestion.question_id}`,
         "completed",
       );
 
-      // Clear current question data
       localStorage.removeItem("currentQuestionForClassification");
 
-      // Move to next question or complete
-      const totalQuestions = 20; // You can make this dynamic
+      const totalQuestions = 20;
       if (currentQuestionIndex < totalQuestions - 1) {
-        // Go back to questions page for next question
         const nextIndex = currentQuestionIndex + 1;
         localStorage.setItem("currentQuestionIndex", nextIndex.toString());
         router.push("/questions");
       } else {
-        // All questions completed
         router.push("/thank-you");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save data");
+    } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const sensors = useSensors(useSensor(PointerSensor));
-
-  const handleDragStart = (event: { active: { id: React.Key } }) => {
-    setActiveDragId(event.active.id as string);
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveDragId(null);
-    if (over && active.id !== over.id) {
-      assignToCategory(active.id as string, over.id as string);
     }
   };
 
@@ -466,44 +298,37 @@ export default function ClassificationPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
-      <div className="container mx-auto px-6 py-10 max-w-7xl">
-        <div className="mb-12">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-800 dark:text-slate-100 mb-6">
-            Medical Response Analysis
-          </h1>
-          <div
-            id="classification-intro"
-            className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6"
-          >
-            <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed max-w-6xl">
-              As a medical expert, please help us analyze our clinical
-              responses. Complete the three steps below for this question:
-            </p>
-            <div className="mt-4 space-y-2">
-              <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed">
-                <span className="font-semibold text-blue-600 dark:text-blue-400">
-                  Step 1:
-                </span>{" "}
-                Based on our responses, help us rate the quality of our clinical
-                assessment.
-              </p>
-              <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed">
-                <span className="font-semibold text-blue-600 dark:text-blue-400">
-                  Step 2:
-                </span>{" "}
-                Select 10-15 qualities that characterize our medical assessment.
-              </p>
-              <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed">
-                <span className="font-semibold text-blue-600 dark:text-blue-400">
-                  Step 3:
-                </span>{" "}
-                Categorize these qualities to help us understand the strengths
-                and limitations.
-              </p>
+    <NextStep steps={tourSteps} cardComponent={CustomCard}>
+      <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
+        <div className="container mx-auto px-6 py-10 max-w-7xl">
+          <div className="mb-12" id="classification-page-header">
+            <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+              <div className="flex-1">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-800 dark:text-slate-100 mb-6">
+                  Medical Response Analysis
+                </h1>
+                <div
+                  id="classification-intro"
+                  className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 sm:p-6"
+                >
+                  <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed max-w-6xl">
+                    As a medical expert, please review the response below. For each
+                    quality check, give a rating and pick a category
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={() => startNextStep("classificationTour")}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2 flex-shrink-0"
+              >
+                <HelpCircle className="h-4 w-4" />
+                <span className="hidden sm:inline">Tour Guide</span>
+                <span className="sm:hidden">Tour</span>
+              </Button>
             </div>
           </div>
-        </div>
 
         {error && (
           <Alert variant="destructive" className="mb-8">
@@ -524,7 +349,7 @@ export default function ClassificationPage() {
             </div>
           </div>
 
-          <Card className="overflow-hidden shadow-lg border-2 border-slate-200 dark:border-slate-700">
+          <Card className="overflow-hidden shadow-lg border-2 border-slate-200 dark:border-slate-700" id="question-context">
             <CardHeader>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center space-x-4">
@@ -535,352 +360,260 @@ export default function ClassificationPage() {
                     {currentQuestion.question_text}
                   </CardTitle>
                 </div>
-                <Badge
-                  variant={
-                    selectedQualities.length >= 10 &&
-                    selectedQualities.length <= 15
-                      ? "default"
-                      : "destructive"
-                  }
-                  className="text-white dark:text-black font-semibold"
-                >
-                  {selectedQualities.length} / 15 selected
-                </Badge>
               </div>
             </CardHeader>
-
-            <CardContent className="space-y-8 p-6">
-              <div className="grid md:grid-cols-2 gap-6 bg-muted/30 p-4 rounded-lg">
-                <div className="space-y-2">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
-                    <h4 className="font-semibold text-foreground flex items-center text-md">
-                      Your Expert Assessment
-                    </h4>
-                    <div className="flex items-center">
-                      <span className="text-xs text-muted-foreground mr-2">
-                        {wordCounts.user} words
-                      </span>
-                      {!editingAnswer && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs"
-                          onClick={() => {
-                            setEditedAnswer(currentQuestion.user_answer || "");
-                            setOriginalAnswer(
-                              currentQuestion.user_answer || "",
-                            );
-                            setEditingAnswer(true);
-                          }}
-                        >
-                          <Pencil className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                          Edit
-                        </Button>
-                      )}
-                    </div>
+            <CardContent className="space-y-8">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-base sm:text-lg font-semibold">
+                      Your Response
+                    </h3>
+                    <span className="text-xs sm:text-sm text-muted-foreground">
+                      {wordCounts.user} words
+                    </span>
                   </div>
-
-                  {editingAnswer ? (
-                    <div className="space-y-2">
-                      <Textarea
-                        value={editedAnswer}
-                        onChange={(e) => {
-                          setEditedAnswer(e.target.value);
-                          setWordCounts((prev) => ({
-                            ...prev,
-                            user: countWords(e.target.value),
-                          }));
-                        }}
-                        className="min-h-[100px] sm:min-h-[120px] text-sm"
-                      />
-                      <div className="flex space-x-2">
-                        <Button
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={handleSaveEditedAnswer}
-                        >
-                          <Check className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                          Save
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs"
-                          onClick={() => setEditingAnswer(false)}
-                        >
-                          <X className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="bg-white dark:bg-zinc-800 p-4 rounded-lg border">
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                        {currentQuestion.user_answer}
-                      </p>
-                    </div>
-                  )}
+                  <div className="p-4 bg-slate-50 dark:bg-zinc-800/50 rounded-lg border max-h-64 overflow-y-auto">
+                    <p className="text-sm whitespace-pre-wrap">
+                      {currentQuestion.user_answer || "No answer provided"}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-0">
-                    <h4 className="font-semibold text-foreground flex items-center text-md">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-base sm:text-lg font-semibold">
                       Our Response
-                    </h4>
-                    <span className="text-xs text-muted-foreground">
+                    </h3>
+                    <span className="text-xs sm:text-sm text-muted-foreground">
                       {wordCounts.ai} words
                     </span>
                   </div>
-                  <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                  <div className="p-4 bg-slate-50 dark:bg-zinc-800/50 rounded-lg border max-h-64 overflow-y-auto">
+                    <p className="text-sm whitespace-pre-wrap">
                       {currentQuestion.llm_response}
                     </p>
                   </div>
                 </div>
               </div>
+            </CardContent>
+          </Card>
 
-              {/* Step 1: Rating Section */}
-              <div id="rating-section" className="border-t pt-4 sm:pt-6">
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-foreground text-center text-lg sm:text-xl flex items-center justify-center gap-2 mb-4">
+          <Card className="overflow-hidden shadow-lg border-2 border-slate-200 dark:border-slate-700">
+            <CardContent className="p-6">
+              <div className="space-y-6">
+                <div className="text-center md:text-left">
+                  <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 mb-3">
                     <div className="w-6 h-6 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-sm font-bold">
                       1
                     </div>
-                    Step 1: Rate the quality of our clinical assessment
-                  </h4>
-                  <div className="flex items-center justify-center space-x-1 sm:space-x-2">
-                    <span className="text-xs sm:text-sm text-muted-foreground w-8 sm:w-12 text-right">
-                      Poor
-                    </span>
-                    <div className="flex flex-wrap justify-center gap-1">
-                      {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((ratingValue) => (
-                        <button
-                          key={ratingValue}
-                          onClick={() => handleRatingClick(ratingValue)}
-                          disabled={isSavingRating}
-                          className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center ${
-                            rating === ratingValue
-                              ? "bg-[var(--color-purple-muted)] text-white scale-110 shadow-lg"
-                              : "bg-slate-200 dark:bg-zinc-700 hover:bg-slate-300 dark:hover:bg-zinc-600 text-slate-600 dark:text-zinc-300"
-                          } ${isSavingRating ? "opacity-50 cursor-not-allowed" : ""}`}
-                        >
-                          {isSavingRating && rating === ratingValue ? (
-                            <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin mx-auto" />
-                          ) : (
-                            ratingValue
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                    <span className="text-xs sm:text-sm text-muted-foreground w-12 sm:w-16 text-left">
-                      Expert
-                    </span>
-                  </div>
-                  {rating !== undefined && rating !== null && (
-                    <div className="text-center">
-                      <Badge variant="default" className="text-xs">
-                        Rated: {rating}/10
-                      </Badge>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Classification Section */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-12 mt-8 border-t-2 border-slate-200 dark:border-slate-700">
-                <div id="qualities-section" className="space-y-6">
-                  <div className="text-center lg:text-left">
-                    <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 mb-3">
-                      <div className="w-6 h-6 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-sm font-bold">
-                        2
-                      </div>
-                      Step 2: Identify Key Qualities
-                    </h2>
+                    Rate the Response
+                  </h2>
+                  <div className="space-y-3">
                     <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
-                      Select 10-15 qualities that characterize our response.
-                      Click the <Pencil className="inline h-3 w-3" /> to modify
-                      if needed.
+                      For each quality below, select a rating and pick a
+                      matching category. Skip any that don't apply.
                     </p>
-                  </div>
-                  <div className="space-y-1 p-2 sm:p-3 border rounded-lg max-h-[300px] sm:max-h-[400px] md:max-h-[500px] overflow-y-auto bg-white dark:bg-zinc-900">
-                    {currentQuestion.rubrics?.map((quality, idx) => {
-                      const isSelected = selectedQualities.includes(quality);
-                      const isCurrentlyEditing = editing?.original === quality;
-                      return (
-                        <div
-                          key={quality}
-                          className={`flex items-center space-x-2 sm:space-x-3 p-2 sm:p-3 rounded-lg transition-colors ${
-                            isSelected
-                              ? "bg-[#f8f5ff] dark:bg-[var(--color-purple-muted-dark)]/20"
-                              : "hover:bg-slate-50 dark:hover:bg-zinc-800/50"
-                          }`}
-                        >
-                          {isCurrentlyEditing ? (
-                            <div className="flex-1 flex items-center gap-1 sm:gap-2">
-                              <Input
-                                value={editing?.current || ""}
-                                onChange={(e) =>
-                                  setEditing((prev) =>
-                                    prev
-                                      ? { ...prev, current: e.target.value }
-                                      : null,
-                                  )
-                                }
-                                className="text-xs sm:text-sm"
-                              />
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 p-0"
-                                onClick={handleSaveEdit}
-                              >
-                                <Check className="h-3 w-3 sm:h-4 sm:w-4 text-green-600" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 p-0"
-                                onClick={() => setEditing(null)}
-                              >
-                                <X className="h-3 w-3 sm:h-4 sm:w-4 text-red-600" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <>
-                              <input
-                                type="checkbox"
-                                id={`${currentQuestion.question_id}-${idx}`}
-                                checked={isSelected}
-                                onChange={() => toggleQualitySelection(quality)}
-                                className="h-4 w-4 sm:h-5 sm:w-5 rounded border-gray-300 text-[var(--color-purple-muted)] focus:ring-[var(--color-purple-muted-border)]"
-                              />
-                              <label
-                                htmlFor={`${currentQuestion.question_id}-${idx}`}
-                                className="flex-1 text-xs sm:text-sm cursor-pointer"
-                              >
-                                {quality}
-                              </label>
-                              <Button
-                                disabled={!!editing}
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 p-0"
-                                onClick={() => handleEditQuality(quality)}
-                              >
-                                <Pencil className="h-3 w-3 sm:h-4 sm:w-4" />
-                              </Button>
-                            </>
-                          )}
+                    <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 text-xs sm:text-sm space-y-2">
+                      <p className="font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                        Feedback Categories:
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-slate-600 dark:text-slate-400">
+                        <div>
+                          <strong>Accuracy:</strong> Is the information
+                          medically correct?
                         </div>
-                      );
-                    })}
+                        <div>
+                          <strong>Completeness:</strong> Is any critical
+                          information missing?
+                        </div>
+                        <div>
+                          <strong>Context Awareness:</strong> Is the advice
+                          right for this specific situation?
+                        </div>
+                        <div>
+                          <strong>Communication:</strong> Is it easy to
+                          understand?
+                        </div>
+                        <div>
+                          <strong>Terminology:</strong> Are the medical terms
+                          explained simply?
+                        </div>
+                        <div>
+                          <strong>Unclassified:</strong> Use this if no other
+                          category fits.
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <div id="categorization-section" className="space-y-6">
-                  <div className="text-center lg:text-left">
-                    <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 mb-3">
-                      <div className="w-6 h-6 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-sm font-bold">
-                        3
-                      </div>
-                      Step 3: Categorize Response Attributes
-                    </h2>
-                    <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
-                      Drag each selected quality into the most appropriate
-                      medical category to help us understand our clinical
-                      strengths and weaknesses.
-                    </p>
-                  </div>
-                  <DndContext
-                    sensors={sensors}
-                    onDragStart={handleDragStart}
-                    onDragEnd={handleDragEnd}
-                  >
-                    {/* Unassigned qualities */}
-                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 min-h-[80px]">
-                      <h3 className="font-semibold text-sm mb-2 text-gray-600">
-                        Unassigned Qualities
-                      </h3>
-                      <div className="space-y-1">
-                        {selectedQualities
-                          .filter((quality) => !qualityCategories[quality])
-                          .map((quality) => (
-                            <DraggableQuality key={quality} id={quality}>
-                              <div className="flex items-center justify-between">
-                                <span className="flex-1">{quality}</span>
-                                <GripVertical className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400" />
-                              </div>
-                            </DraggableQuality>
-                          ))}
-                      </div>
-                    </div>
-                    <div className="space-y-3 sm:space-y-4">
-                      {CATEGORIES.map((category) => (
-                        <CategoryDropzone
-                          key={category}
-                          id={category}
-                          title={category}
-                          isOver={activeDragId !== null}
+                <div className="overflow-x-auto bg-white dark:bg-zinc-900 rounded-lg border" id="rubric-table">
+                  <table className="w-full">
+                    <thead className="bg-slate-50 dark:bg-zinc-800">
+                      <tr>
+                        <th className="text-left p-3 font-semibold text-sm border-b min-w-[200px]">
+                          Rubric
+                        </th>
+                        <th className="text-center p-3 font-semibold text-sm border-b min-w-[100px]">
+                          Pass/Fail
+                        </th>
+                        <th className="w-px border-b">
+                          <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-auto"></div>
+                        </th>
+                        {CATEGORIES.map((category) => (
+                          <th
+                            key={category}
+                            className="text-center p-3 font-semibold text-xs sm:text-sm border-b min-w-[80px]"
+                          >
+                            {category}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {currentQuestion.rubrics?.map((quality, idx) => (
+                        <tr
+                          key={quality}
+                          className={`${idx % 2 === 0 ? "bg-white dark:bg-zinc-900" : "bg-slate-25 dark:bg-zinc-800/30"} hover:bg-slate-50 dark:hover:bg-zinc-800/50`}
                         >
-                          {selectedQualities
-                            .filter(
-                              (quality) =>
-                                qualityCategories[quality] === category,
-                            )
-                            .map((quality) => (
-                              <DraggableQuality key={quality} id={quality}>
-                                <div className="flex items-center justify-between">
-                                  <span className="flex-1">{quality}</span>
-                                  <GripVertical className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400" />
+                          <td className="p-3 text-xs sm:text-sm font-medium border-b">
+                            {quality}
+                          </td>
+                          <td className="text-center p-3 border-b">
+                            <div className="flex justify-center gap-2" id={idx === 0 ? "pass-fail-example" : undefined}>
+                              <label className="flex items-center cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={`passfail-${quality}`}
+                                  value="pass"
+                                  checked={qualityPassFail[quality] === "pass"}
+                                  onChange={() =>
+                                    handlePassFailSelection(quality, "pass")
+                                  }
+                                  className="sr-only"
+                                />
+                                <span
+                                  className={`px-2 py-1 rounded text-xs font-semibold ${
+                                    qualityPassFail[quality] === "pass"
+                                      ? "bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100"
+                                      : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                                  }`}
+                                >
+                                  Pass
+                                </span>
+                              </label>
+                              <label className="flex items-center cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={`passfail-${quality}`}
+                                  value="fail"
+                                  checked={qualityPassFail[quality] === "fail"}
+                                  onChange={() =>
+                                    handlePassFailSelection(quality, "fail")
+                                  }
+                                  className="sr-only"
+                                />
+                                <span
+                                  className={`px-2 py-1 rounded text-xs font-semibold ${
+                                    qualityPassFail[quality] === "fail"
+                                      ? "bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-100"
+                                      : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                                  }`}
+                                >
+                                  Fail
+                                </span>
+                              </label>
+                            </div>
+                          </td>
+                          <td className="w-px border-b">
+                            <div className="w-px h-full bg-gray-300 dark:bg-gray-600 mx-auto"></div>
+                          </td>
+                          {CATEGORIES.map((category) => (
+                            <td
+                              key={category}
+                              className="text-center p-3 border-b"
+                            >
+                              <div
+                                onClick={() =>
+                                  handleAxesSelection(quality, category)
+                                }
+                                className="cursor-pointer flex justify-center p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                                role="checkbox"
+                                aria-checked={qualityAxes[quality] === category}
+                                aria-label={`Select ${category} for ${quality}`}
+                                tabIndex={0}
+                                id={idx === 0 && category === "Accuracy" ? "category-example" : undefined}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    handleAxesSelection(quality, category);
+                                  }
+                                }}
+                              >
+                                <div
+                                  className={`w-6 h-6 rounded-md border-2 transition-all duration-200 shadow-sm ${
+                                    qualityAxes[quality] === category
+                                      ? "bg-green-500 border-green-500 shadow-green-200 dark:shadow-green-800/30 scale-105"
+                                      : "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-500 hover:border-green-400 dark:hover:border-green-400 hover:shadow-md hover:scale-105"
+                                  } flex items-center justify-center`}
+                                >
+                                  {qualityAxes[quality] === category && (
+                                    <svg
+                                      className="w-4 h-4 text-white"
+                                      fill="currentColor"
+                                      viewBox="0 0 20 20"
+                                    >
+                                      <path
+                                        fillRule="evenodd"
+                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                        clipRule="evenodd"
+                                      />
+                                    </svg>
+                                  )}
                                 </div>
-                              </DraggableQuality>
-                            ))}
-                        </CategoryDropzone>
+                              </div>
+                            </td>
+                          ))}
+                        </tr>
                       ))}
-                    </div>
-                  </DndContext>
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
-              <div className="pt-6 border-t border-slate-200 dark:border-slate-700">
-                <div className="space-y-3">
-                  <label
-                    htmlFor="feedback"
-                    className="text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-200"
-                  >
-                    Additional Feedback (Optional):
-                  </label>
-                  <Textarea
-                    id="feedback"
-                    placeholder="Share any additional insights about this response..."
-                    value={feedback}
-                    onChange={(e) => setFeedback(e.target.value)}
-                    className="min-h-[100px] text-sm sm:text-base resize-y"
-                  />
-                </div>
+              <div className="space-y-3" id="additional-feedback">
+                <label
+                  htmlFor="feedback"
+                  className="text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-200"
+                >
+                  Additional Feedback (Optional):
+                </label>
+                <Textarea
+                  id="feedback"
+                  placeholder="Share any additional insights about this response..."
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  className="min-h-[100px] text-sm sm:text-base resize-y"
+                />
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <div className="mt-12 flex justify-between items-center">
+        <div className="mt-12 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
           <Button
             onClick={() => router.push("/questions")}
             variant="outline"
             size="lg"
             disabled={isSubmitting}
+            className="flex items-center justify-center"
           >
             <ArrowLeft className="mr-2 h-5 w-5" />
             Back to Question
           </Button>
 
-          <Button
-            onClick={handleSubmit}
-            size="lg"
-            disabled={
-              isSubmitting || selectedQualities.length < 10 || rating === null
-            }
-          >
+          <Button onClick={handleSubmit} size="lg" disabled={isSubmitting} id="save-continue-button" className="flex items-center justify-center">
             {isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -898,5 +631,6 @@ export default function ClassificationPage() {
         </div>
       </div>
     </div>
+    </NextStep>
   );
 }
