@@ -71,13 +71,6 @@ export const tourSteps: Tour[] = [
         side: "bottom",
       },
       {
-        title: "For Your Reference",
-        content: "Here you can see the original question, your final answer, and Our Response to help you during the evaluation.",
-        selector: "#question-context",
-        icon: "📋",
-        side: "bottom",
-      },
-      {
         title: "The Quality Checklist",
         content: "For each quality below, give it a rating and assign it a category. Guide your choices by thinking about how an ideal answer should be written.",
         selector: "#rubric-table", 
@@ -97,13 +90,6 @@ export const tourSteps: Tour[] = [
         selector: "#category-example",
         icon: "🏷️",
         side: "right",
-      },
-      {
-        title: "Add Optional Comments",
-        content: "If you have any other thoughts or feedback on the response, you can add them here.",
-        selector: "#additional-feedback",
-        icon: "💬",
-        side: "top",
       },
       {
         title: "Save and Finish",
