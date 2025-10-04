@@ -187,7 +187,7 @@ export default function ClassificationPage() {
 
     if (completedRubrics.length < 8) {
       setError(
-        `Please evaluate at least 8 rubrics. You have only completed ${completedRubrics.length}.`,
+        `Please evaluate at least 8 Qualities. You have only completed ${completedRubrics.length}.`,
       );
       return;
     }
@@ -201,14 +201,14 @@ export default function ClassificationPage() {
 
     if (missingPassFail.length > 0) {
       setError(
-        `Please select Pass/Fail for all evaluated rubrics. Missing for: ${missingPassFail.join(", ")}`,
+        `Please select Relevant/Off-Topic for all evaluated qualities. Missing for: ${missingPassFail.join(", ")}`,
       );
       return;
     }
 
     if (missingAxes.length > 0) {
       setError(
-        `Please select an axis category for all evaluated rubrics. Missing for: ${missingAxes.join(", ")}`,
+        `Please select an axis category for all evaluated qualities. Missing for: ${missingAxes.join(", ")}`,
       );
       return;
     }
@@ -453,10 +453,10 @@ export default function ClassificationPage() {
                     <thead className="bg-slate-50 dark:bg-zinc-800">
                       <tr>
                         <th className="text-left p-3 font-semibold text-sm border-b min-w-[200px]">
-                          Rubric
+                          Qualities
                         </th>
                         <th className="text-center p-3 font-semibold text-sm border-b min-w-[100px]">
-                          Pass/Fail
+                          Relevant/Off-Topic
                         </th>
                         <th className="w-px border-b">
                           <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-auto"></div>
@@ -500,7 +500,7 @@ export default function ClassificationPage() {
                                       : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
                                   }`}
                                 >
-                                  Pass
+                                  Relevant
                                 </span>
                               </label>
                               <label className="flex items-center cursor-pointer">
@@ -521,7 +521,7 @@ export default function ClassificationPage() {
                                       : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
                                   }`}
                                 >
-                                  Fail
+                                  Off-Topic
                                 </span>
                               </label>
                             </div>

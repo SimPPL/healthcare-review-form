@@ -67,9 +67,17 @@ export async function GET(request: NextRequest) {
           );
 
           if (datasetResult.Item?.rubrics) {
-            rubrics = Array.isArray(datasetResult.Item.rubrics)
-              ? datasetResult.Item.rubrics
-              : JSON.parse(datasetResult.Item.rubrics);
+            // Handle both string and array formats for rubrics
+            if (typeof datasetResult.Item.rubrics === 'string') {
+              try {
+                rubrics = JSON.parse(datasetResult.Item.rubrics);
+              } catch {
+                // If parsing fails, treat as a single rubric string
+                rubrics = [datasetResult.Item.rubrics];
+              }
+            } else if (Array.isArray(datasetResult.Item.rubrics)) {
+              rubrics = datasetResult.Item.rubrics;
+            }
           }
         } catch (err) {
         }

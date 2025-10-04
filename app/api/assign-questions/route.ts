@@ -157,8 +157,7 @@ export async function POST(request: NextRequest) {
     for (const question of uniqueQuestions) {
       if (
         !question.question_id ||
-        !question.question_text ||
-        !question.llm_response
+        !question.question_text
       ) {
         continue;
       }
@@ -187,15 +186,14 @@ export async function POST(request: NextRequest) {
     for (const question of uniqueQuestions) {
       if (
         !question.question_id ||
-        !question.question_text ||
-        !question.llm_response
+        !question.question_text
       ) {
         continue;
       }
 
       questionsMap[question.question_id] = {
         question_text: question.question_text,
-        llm_response: question.llm_response,
+        llm_response: question.llm_response || question.answer || "",
         status: "assigned",
         assigned_at: new Date().toISOString(),
       };
@@ -203,7 +201,7 @@ export async function POST(request: NextRequest) {
       assignedQuestions.push({
         question_id: question.question_id,
         question_text: question.question_text,
-        llm_response: question.llm_response,
+        llm_response: question.llm_response || question.answer || "",
       });
     }
 

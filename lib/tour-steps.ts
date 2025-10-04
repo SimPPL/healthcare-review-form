@@ -86,7 +86,7 @@ export const tourSteps: Tour[] = [
       },
       {
         title: "Give Your Rating",
-        content: "Select 'Pass' (or 'Agree') if Our Response meets this quality standard, or 'Fail' (or 'Disagree') if it doesn't.",
+        content: "Select 'Relevant' if Our Response meets this quality standard, or 'Off-Topic' if it doesn't.",
         selector: "#pass-fail-example",
         icon: "✅❌",
         side: "right",

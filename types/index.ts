@@ -1,19 +1,23 @@
 export interface Question {
   question_id: string;
   question_text: string;
-  llm_response: string;
   answer?: string;
   answer_hindi?: string;
   answer_marathi?: string;
-  axis_scores?: Record<string, number>;
-  classification?: string;
-  medical_quality_score?: number;
-  references?: string[];
-  rubric_scores?: Record<string, number>;
-  rubrics?: string[];
+  question_hindi?: string;
+  question_marathi?: string;
+  references?: string;
+  rubrics?: string;
   target_evaluations?: number;
   theme?: string;
   times_answered?: number;
+  
+  // Legacy fields for backward compatibility
+  llm_response?: string;
+  axis_scores?: Record<string, number>;
+  classification?: string;
+  medical_quality_score?: number;
+  rubric_scores?: Record<string, number>;
 }
 
 export interface UserResponse {

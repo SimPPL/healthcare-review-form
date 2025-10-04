@@ -1,7 +1,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
-const HARDCODED_DATASET_TABLE = "ai4health-dataset";
+const HARDCODED_DATASET_TABLE = "health-review-dataset";
 const HARDCODED_RESPONSES_TABLE = "health_review_response";
 const HARDCODED_REGION = "ap-south-1";
 
