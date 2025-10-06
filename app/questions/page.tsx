@@ -85,7 +85,7 @@ export default function QuestionsPage() {
         setIsSaving(false);
         setWordCount(finalAnswer ? finalAnswer.trim().split(/\s+/).length : 0);
 
-        if (completed === 0 && !hasSeenTour && !shouldShowAI) {
+        if (completed === 0 && !hasSeenTour) {
           setTimeout(() => {
             startNextStep("questionsTour");
             localStorage.setItem("questionsTourSeen", "true");

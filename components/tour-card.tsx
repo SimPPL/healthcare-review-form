@@ -3,9 +3,20 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import Image from 'next/image';
+
+interface ExtendedStep {
+  title: string;
+  content: string;
+  selector: string;
+  icon: string;
+  side: string;
+  image?: string;
+  imageAlt?: string;
+}
 
 interface CustomCardProps {
-  step: any;
+  step: ExtendedStep;
   currentStep: number;
   totalSteps: number;
   nextStep: () => void;
@@ -24,7 +35,7 @@ const CustomCard = ({
   arrow,
 }: CustomCardProps) => {
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl border border-gray-200 dark:border-zinc-700 p-4 sm:p-6 max-w-md mx-4 sm:mx-0">
+    <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl border border-gray-200 dark:border-zinc-700 p-4 sm:p-6 max-w-2xl mx-4 sm:mx-0">
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
@@ -46,6 +57,22 @@ const CustomCard = ({
       <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed mb-6">
         {step.content}
       </div>
+
+      {/* Image */}
+      {step.image && (
+        <div className="mb-6">
+          <div className="relative w-full max-w-4xl mx-auto">
+            <Image
+              src={step.image}
+              alt={step.imageAlt || "Tour step illustration"}
+              width={600}
+              height={400}
+              className="rounded-lg border border-gray-200 dark:border-zinc-700 shadow-md w-full h-auto"
+              style={{ objectFit: 'contain' }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Arrow */}
       {arrow}

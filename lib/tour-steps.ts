@@ -1,6 +1,22 @@
 import { Tour } from 'nextstepjs';
 
-export const tourSteps: Tour[] = [
+// Extend the Step interface to include image support
+interface ExtendedStep {
+  title: string;
+  content: string;
+  selector: string;
+  icon: string;
+  side: string;
+  image?: string;
+  imageAlt?: string;
+}
+
+interface ExtendedTour {
+  tour: string;
+  steps: ExtendedStep[];
+}
+
+export const tourSteps: ExtendedTour[] = [
   {
     tour: "questionsTour",
     steps: [
@@ -20,17 +36,12 @@ export const tourSteps: Tour[] = [
       },
       {
         title: "Your Expert Answer",
-        content: "Please type your complete answer here. It's important to do this before seeing Our Response to capture your initial thoughts.",
+        content: "Please type your complete answer here.",
         selector: "#answer-textarea",
         icon: "✍️",
         side: "left",
-      },
-      {
-        title: "Reveal Our Response",
-        content: "Once you've finished writing, click here to see Our Response to the same question.",
-        selector: "#show-ai-button",
-        icon: "🤖",
-        side: "top",
+        image: "/response.png",
+        imageAlt: "Example of a well-structured medical response",
       },
     ],
   },
@@ -76,20 +87,26 @@ export const tourSteps: Tour[] = [
         selector: "#rubric-table", 
         icon: "📊",
         side: "top",
+        image: "/rubric.png",
+        imageAlt: "Example of AI-generated medical response format",
       },
       {
         title: "Give Your Rating",
-        content: "Select 'Relevant' if Our Response meets this quality standard, or 'Off-Topic' if it doesn't.",
+        content: "Select 'Relevant' if 'Our Response' meets this quality standard, or 'Off-Topic' if it doesn't.",
         selector: "#pass-fail-example",
         icon: "✅❌",
         side: "right",
+        image: "/response.png",
+        imageAlt: "Example of AI-generated medical response format",
       },
       {
         title: "Assign a Category",
-        content: "After rating it, assign the quality check to a relevant category like Accuracy, Clarity, or Completeness.",
+        content: "After rating it, assign the quality to a relevant category like Accuracy, Communication or Completeness.",
         selector: "#category-example",
         icon: "🏷️",
         side: "right",
+        image: "/axes.png",
+        imageAlt: "Example of AI-generated medical response format",
       },
       {
         title: "Save and Finish",
