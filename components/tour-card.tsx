@@ -5,35 +5,10 @@ import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import Image from 'next/image';
 
-interface ExtendedStep {
-  title: string;
-  content: string;
-  selector: string;
-  icon: string;
-  side: string;
-  image?: string;
-  imageAlt?: string;
-}
+import type { CardComponentProps } from 'nextstepjs';
 
-interface CustomCardProps {
-  step: ExtendedStep;
-  currentStep: number;
-  totalSteps: number;
-  nextStep: () => void;
-  prevStep: () => void;
-  skipTour?: () => void;
-  arrow: React.ReactNode;
-}
-
-const CustomCard = ({
-  step,
-  currentStep,
-  totalSteps,
-  nextStep,
-  prevStep,
-  skipTour,
-  arrow,
-}: CustomCardProps) => {
+const CustomCard = (props: CardComponentProps) => {
+  const { step, currentStep, totalSteps, nextStep, prevStep, skipTour, arrow } = props;
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl border border-gray-200 dark:border-zinc-700 p-4 sm:p-6 max-w-2xl mx-4 sm:mx-0">
       {/* Header */}
@@ -59,12 +34,12 @@ const CustomCard = ({
       </div>
 
       {/* Image */}
-      {step.image && (
+      {(step as any).image && (
         <div className="mb-6">
           <div className="relative w-full max-w-4xl mx-auto">
             <Image
-              src={step.image}
-              alt={step.imageAlt || "Tour step illustration"}
+              src={(step as any).image}
+              alt={(step as any).imageAlt || "Tour step illustration"}
               width={600}
               height={400}
               className="rounded-lg border border-gray-200 dark:border-zinc-700 shadow-md w-full h-auto"

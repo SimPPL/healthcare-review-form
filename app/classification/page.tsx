@@ -23,14 +23,11 @@ export default function ClassificationPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
-  const [userName, setUserName] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [hasSeenTour, setHasSeenTour] = useState(false);
 
   const [qualityPassFail, setQualityPassFail] = useState<
     Record<string, "pass" | "fail" | "">
   >({});
-  const [qualityAxes, setQualityAxes] = useState<Record<string, string>>({});
   const [editedRubrics, setEditedRubrics] = useState<Record<string, string>>(
     {},
   );
@@ -40,29 +37,17 @@ export default function ClassificationPage() {
     ai: 0,
   });
 
-  const CATEGORIES = [
-    "Accuracy",
-    "Communication",
-    "Completeness",
-    "Context Awareness",
-    "Terminology",
-    "Unclassified",
-  ];
 
   useEffect(() => {
     try {
       const storedUserId = localStorage.getItem("userId");
-      const storedUserName = localStorage.getItem("userName");
       const tourSeen = localStorage.getItem("classificationTourSeen");
-
 
       if (!storedUserId) {
         router.push("/");
         return;
       }
       setUserId(storedUserId);
-      setUserName(storedUserName || null);
-      setHasSeenTour(!!tourSeen);
 
       const currentQuestionInfo = localStorage.getItem(
         "currentQuestionForClassification",
@@ -75,8 +60,7 @@ export default function ClassificationPage() {
           setTimeout(() => {
             startNextStep("classificationTour");
             localStorage.setItem("classificationTourSeen", "true");
-            setHasSeenTour(true);
-          }, 1000);
+          }, 1500);
         }
         
         fetchCurrentQuestion(storedUserId, questionId);
@@ -157,22 +141,6 @@ export default function ClassificationPage() {
     });
   };
 
-  const handleAxesSelection = (quality: string, selection: string) => {
-    if (CATEGORIES.includes(selection)) {
-      setQualityAxes((prev) => {
-        const currentSelection = prev[quality];
-        if (currentSelection === selection) {
-          const newState = { ...prev };
-          delete newState[quality];
-          return newState;
-        }
-        return {
-          ...prev,
-          [quality]: selection,
-        };
-      });
-    }
-  };
 
   const handleSubmit = async () => {
     if (!userId || !currentQuestion) {
@@ -182,7 +150,7 @@ export default function ClassificationPage() {
 
     const completedRubrics =
       currentQuestion.rubrics?.filter(
-        (quality) => qualityPassFail[quality] && qualityAxes[quality],
+        (quality) => qualityPassFail[quality],
       ) || [];
 
     if (completedRubrics.length < 8) {
@@ -195,20 +163,10 @@ export default function ClassificationPage() {
     const missingPassFail = completedRubrics.filter(
       (quality) => !qualityPassFail[quality],
     );
-    const missingAxes = completedRubrics.filter(
-      (quality) => !qualityAxes[quality],
-    );
 
     if (missingPassFail.length > 0) {
       setError(
-        `Please select Relevant/Off-Topic for all evaluated qualities. Missing for: ${missingPassFail.join(", ")}`,
-      );
-      return;
-    }
-
-    if (missingAxes.length > 0) {
-      setError(
-        `Please select an axis category for all evaluated qualities. Missing for: ${missingAxes.join(", ")}`,
+        `Please select Yes/No for all evaluated qualities. Missing for: ${missingPassFail.join(", ")}`,
       );
       return;
     }
@@ -225,10 +183,6 @@ export default function ClassificationPage() {
         [currentQuestion.question_id]: qualityPassFail,
       };
 
-      const axesData = {
-        [currentQuestion.question_id]: qualityAxes,
-      };
-
       const feedbackData = feedback
         ? { [currentQuestion.question_id]: feedback }
         : {};
@@ -242,7 +196,6 @@ export default function ClassificationPage() {
           userId,
           selectedQualities: questionData,
           qualityPassFail: passFailData,
-          qualityCategories: axesData,
           editedQualities,
           feedback: feedbackData,
           isEdit: false,
@@ -261,7 +214,7 @@ export default function ClassificationPage() {
 
       localStorage.removeItem("currentQuestionForClassification");
 
-      const totalQuestions = 20;
+      const totalQuestions = 25;
       if (currentQuestionIndex < totalQuestions - 1) {
         const nextIndex = currentQuestionIndex + 1;
         localStorage.setItem("currentQuestionIndex", nextIndex.toString());
@@ -312,8 +265,7 @@ export default function ClassificationPage() {
                   className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 sm:p-6"
                 >
                   <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed max-w-6xl">
-                    As a medical expert, please review the response below. For each
-                    quality check, give a rating and pick a category
+                    As a medical expert, please review the response below. Each quality is a checklist for a perfect answer. Select Yes if the response meets the quality, or No if it doesn't.
                   </p>
                 </div>
               </div>
@@ -339,12 +291,12 @@ export default function ClassificationPage() {
         <div className="space-y-8">
           <div className="text-center">
             <h2 className="text-lg sm:text-xl font-bold mb-2">
-              Question {currentQuestionIndex + 1} of 20
+              Question {currentQuestionIndex + 1} of 25
             </h2>
             <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 mb-6">
               <div
                 className="bg-[var(--color-purple-muted)] h-2 rounded-full transition-all duration-300"
-                style={{ width: `${((currentQuestionIndex + 1) / 20) * 100}%` }}
+                style={{ width: `${((currentQuestionIndex + 1) / 25) * 100}%` }}
               ></div>
             </div>
           </div>
@@ -407,44 +359,12 @@ export default function ClassificationPage() {
                     <div className="w-6 h-6 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-sm font-bold">
                       1
                     </div>
-                    Rate the Response
+                    Evaluate the Response
                   </h2>
                   <div className="space-y-3">
-                    <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
-                      For each quality below, select a rating and pick a
-                      matching category. Skip any that don't apply.
-                    </p>
-                    <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-4 text-xs sm:text-sm space-y-2">
-                      <p className="font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                        Feedback Categories:
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-slate-600 dark:text-slate-400">
-                        <div>
-                          <strong>Accuracy:</strong> Is the information
-                          medically correct?
-                        </div>
-                        <div>
-                          <strong>Completeness:</strong> Is any critical
-                          information missing?
-                        </div>
-                        <div>
-                          <strong>Context Awareness:</strong> Is the advice
-                          right for this specific situation?
-                        </div>
-                        <div>
-                          <strong>Communication:</strong> Is it easy to
-                          understand?
-                        </div>
-                        <div>
-                          <strong>Terminology:</strong> Are the medical terms
-                          explained simply?
-                        </div>
-                        <div>
-                          <strong>Unclassified:</strong> Use this if no other
-                          category fits.
-                        </div>
-                      </div>
-                    </div>
+                  <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
+                    For each quality below, select Yes if the response meets the quality, or No if it doesn't. Skip any that don't apply.
+                  </p>
                   </div>
                 </div>
 
@@ -455,20 +375,9 @@ export default function ClassificationPage() {
                         <th className="text-left p-3 font-semibold text-sm border-b min-w-[200px]">
                           Qualities
                         </th>
-                        <th className="text-center p-3 font-semibold text-sm border-b min-w-[100px]">
-                          Relevant/Off-Topic
+                        <th className="text-center p-3 font-semibold text-sm border-b min-w-[200px]">
+                          Yes/No
                         </th>
-                        <th className="w-px border-b">
-                          <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-auto"></div>
-                        </th>
-                        {CATEGORIES.map((category) => (
-                          <th
-                            key={category}
-                            className="text-center p-3 font-semibold text-xs sm:text-sm border-b min-w-[80px]"
-                          >
-                            {category}
-                          </th>
-                        ))}
                       </tr>
                     </thead>
                     <tbody>
@@ -494,13 +403,13 @@ export default function ClassificationPage() {
                                   className="sr-only"
                                 />
                                 <span
-                                  className={`px-2 py-1 rounded text-xs font-semibold ${
+                                  className={`px-4 py-2 rounded text-sm font-semibold ${
                                     qualityPassFail[quality] === "pass"
                                       ? "bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100"
                                       : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
                                   }`}
                                 >
-                                  Relevant
+                                  Yes
                                 </span>
                               </label>
                               <label className="flex items-center cursor-pointer">
@@ -515,66 +424,17 @@ export default function ClassificationPage() {
                                   className="sr-only"
                                 />
                                 <span
-                                  className={`px-2 py-1 rounded text-xs font-semibold ${
+                                  className={`px-4 py-2 rounded text-sm font-semibold ${
                                     qualityPassFail[quality] === "fail"
                                       ? "bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-100"
                                       : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
                                   }`}
                                 >
-                                  Off-Topic
+                                  No
                                 </span>
                               </label>
                             </div>
                           </td>
-                          <td className="w-px border-b">
-                            <div className="w-px h-full bg-gray-300 dark:bg-gray-600 mx-auto"></div>
-                          </td>
-                          {CATEGORIES.map((category) => (
-                            <td
-                              key={category}
-                              className="text-center p-3 border-b"
-                            >
-                              <div
-                                onClick={() =>
-                                  handleAxesSelection(quality, category)
-                                }
-                                className="cursor-pointer flex justify-center p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                                role="checkbox"
-                                aria-checked={qualityAxes[quality] === category}
-                                aria-label={`Select ${category} for ${quality}`}
-                                tabIndex={0}
-                                id={idx === 0 && category === "Accuracy" ? "category-example" : undefined}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault();
-                                    handleAxesSelection(quality, category);
-                                  }
-                                }}
-                              >
-                                <div
-                                  className={`w-6 h-6 rounded-md border-2 transition-all duration-200 shadow-sm ${
-                                    qualityAxes[quality] === category
-                                      ? "bg-green-500 border-green-500 shadow-green-200 dark:shadow-green-800/30 scale-105"
-                                      : "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-500 hover:border-green-400 dark:hover:border-green-400 hover:shadow-md hover:scale-105"
-                                  } flex items-center justify-center`}
-                                >
-                                  {qualityAxes[quality] === category && (
-                                    <svg
-                                      className="w-4 h-4 text-white"
-                                      fill="currentColor"
-                                      viewBox="0 0 20 20"
-                                    >
-                                      <path
-                                        fillRule="evenodd"
-                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                        clipRule="evenodd"
-                                      />
-                                    </svg>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                          ))}
                         </tr>
                       ))}
                     </tbody>
@@ -582,7 +442,7 @@ export default function ClassificationPage() {
                 </div>
               </div>
 
-              <div className="space-y-3" id="additional-feedback">
+              <div className="space-y-3 mt-8" id="additional-feedback">
                 <label
                   htmlFor="feedback"
                   className="text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-200"
@@ -621,7 +481,7 @@ export default function ClassificationPage() {
               </>
             ) : (
               <>
-                {currentQuestionIndex < 19
+                {currentQuestionIndex < 24
                   ? "Next Question"
                   : "Complete Review"}
                 <ArrowRight className="ml-2 h-5 w-5" />

@@ -1,12 +1,10 @@
 import { Tour } from 'nextstepjs';
-
-// Extend the Step interface to include image support
 interface ExtendedStep {
   title: string;
   content: string;
   selector: string;
   icon: string;
-  side: string;
+  side: "bottom" | "right" | "left" | "top" | "top-left" | "top-right" | "bottom-left" | "bottom-right" | "left-top" | "left-bottom" | "right-top" | "right-bottom";
   image?: string;
   imageAlt?: string;
 }
@@ -82,31 +80,13 @@ export const tourSteps: ExtendedTour[] = [
         side: "bottom",
       },
       {
-        title: "The Quality Checklist",
-        content: "For each quality below, give it a rating and assign it a category. Guide your choices by thinking about how an ideal answer should be written.",
+        title: "Evaluate the Response",
+        content: "Each quality is a checklist for a perfect answer. Select 'Yes' if 'Our Response' meets this quality standard, or 'No' if it doesn't. You can click again to change your selection.",
         selector: "#rubric-table", 
         icon: "📊",
         side: "top",
-        image: "/rubric.png",
-        imageAlt: "Example of AI-generated medical response format",
-      },
-      {
-        title: "Give Your Rating",
-        content: "Select 'Relevant' if 'Our Response' meets this quality standard, or 'Off-Topic' if it doesn't.",
-        selector: "#pass-fail-example",
-        icon: "✅❌",
-        side: "right",
         image: "/response.png",
-        imageAlt: "Example of AI-generated medical response format",
-      },
-      {
-        title: "Assign a Category",
-        content: "After rating it, assign the quality to a relevant category like Accuracy, Communication or Completeness.",
-        selector: "#category-example",
-        icon: "🏷️",
-        side: "right",
-        image: "/axes.png",
-        imageAlt: "Example of AI-generated medical response format",
+        imageAlt: "Example of evaluating response quality",
       },
       {
         title: "Save and Finish",

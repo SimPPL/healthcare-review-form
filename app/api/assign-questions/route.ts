@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
       if (!seenQuestionIds.has(question.question_id)) {
         seenQuestionIds.add(question.question_id);
         uniqueQuestions.push(question);
-        if (uniqueQuestions.length >= 20) break;
+        if (uniqueQuestions.length >= 25) break;
       }
     }
 
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
     // Check existing user limits early
     if (existingUser) {
       const existingQuestionsAssigned = existingUser.questions_assigned || [];
-      const maxQuestions = existingUser.max_questions_assigned || 20;
+      const maxQuestions = existingUser.max_questions_assigned || 25;
 
       // Check if user already has max questions assigned
       if (existingQuestionsAssigned.length >= maxQuestions) {
@@ -262,7 +262,7 @@ export async function POST(request: NextRequest) {
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           questions_assigned: questionIds,
-          max_questions_assigned: 20,
+          max_questions_assigned: 25,
           questions_answered: 0,
           unbiased_answer: {},
           edited_answer: {},

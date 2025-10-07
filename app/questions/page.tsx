@@ -58,7 +58,6 @@ export default function QuestionsPage() {
 
   const currentQuestion = questions[currentQuestionIndex];
 
-  // Update progress when questions change
   useEffect(() => {
     if (questions.length > 0) {
       const completed = parseInt(
@@ -90,7 +89,7 @@ export default function QuestionsPage() {
             startNextStep("questionsTour");
             localStorage.setItem("questionsTourSeen", "true");
             setHasSeenTour(true);
-          }, 1000);
+          }, 1500);
         }
       }
     }

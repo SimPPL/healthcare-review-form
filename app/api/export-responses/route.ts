@@ -249,7 +249,7 @@ function extractUserData(user: any) {
 
     // Questions summary
     questions_assigned: user.questions_assigned || [],
-    max_questions_assigned: user.max_questions_assigned || 20,
+    max_questions_assigned: user.max_questions_assigned || 25,
     questions_answered: user.questions_answered || 0,
 
     // Answers summary

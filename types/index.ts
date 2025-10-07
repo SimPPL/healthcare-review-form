@@ -12,7 +12,6 @@ export interface Question {
   theme?: string;
   times_answered?: number;
   
-  // Legacy fields for backward compatibility
   llm_response?: string;
   axis_scores?: Record<string, number>;
   classification?: string;
@@ -106,7 +105,6 @@ export interface UserResponseRecord {
 
   additional_feedback: Record<string, string>;
 
-  // Removed classification_data to prevent duplication - all data stored in individual question objects
 
   questions?: Record<string, QuestionAssignment>;
 }
@@ -121,6 +119,3 @@ export interface UserInfo {
   extraInfo?: string;
 }
 
-// ClassificationData interface removed to prevent data duplication
-// All classification data is now stored directly in individual question objects
-// within list_of_rubrics_picked and edited_rubrics
