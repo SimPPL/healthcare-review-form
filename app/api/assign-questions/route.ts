@@ -8,7 +8,6 @@ import {
   ScanCommand,
   UpdateCommand,
   PutCommand,
-  QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { v4 as uuidv4 } from "uuid";
 import {
@@ -17,6 +16,14 @@ import {
   UserInfo,
   UserResponseRecord,
 } from "@/types";
+
+// Mapping from profession dropdown values to domain values
+const PROFESSION_TO_DOMAIN_MAP: Record<string, string> = {
+  "OB/GYN": "Gynecology & Maternal Health",
+  "General Practitioner": "General Health & Primary Care", 
+  "Dietitian": "Nutrition & Dietetics",
+  "Physiotherapist": "Physical Therapy & Recovery"
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -67,6 +74,17 @@ export async function POST(request: NextRequest) {
         userId = existingUser.user_id;
       }
     } catch (error) {
+      // Log error but continue - user lookup failure shouldn't block new user creation
+      console.warn("Failed to lookup existing user:", error);
+    }
+
+    // Get the domain for the selected profession
+    const selectedDomain = PROFESSION_TO_DOMAIN_MAP[profession];
+    if (!selectedDomain) {
+      return NextResponse.json(
+        { error: "Invalid profession selected" },
+        { status: 400 },
+      );
     }
 
     let scanResult;
@@ -74,7 +92,13 @@ export async function POST(request: NextRequest) {
       const dynamoDb = getDynamoDbClient();
       const scanCommand = new ScanCommand({
         TableName: DATASET_TABLE,
-        FilterExpression: "times_answered < target_evaluations",
+        FilterExpression: "times_answered < target_evaluations AND #domain = :domain",
+        ExpressionAttributeNames: {
+          "#domain": "domain"
+        },
+        ExpressionAttributeValues: {
+          ":domain": selectedDomain
+        }
       });
       scanResult = await dynamoDb.send(scanCommand);
     } catch (error) {
@@ -100,20 +124,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "No questions available for evaluation. All questions may have reached their target evaluations.",
+            `No questions available for evaluation in the ${selectedDomain} domain. All questions may have reached their target evaluations.`,
         },
         { status: 404 },
       );
     }
 
-    const shuffledQuestions = [...availableQuestions].sort(
+    // Separate questions into two groups:
+    // 1. Questions that haven't been answered yet (times_answered = 0)
+    // 2. Questions that have been answered but haven't reached target (times_answered > 0)
+    const unansweredQuestions = availableQuestions.filter(q => (q.times_answered || 0) === 0);
+    const partiallyAnsweredQuestions = availableQuestions.filter(q => (q.times_answered || 0) > 0);
+
+    // Sort unanswered questions by question_id for consistent ordering
+    const sortedUnansweredQuestions = unansweredQuestions.sort((a, b) => 
+      a.question_id.localeCompare(b.question_id)
+    );
+
+    // Shuffle partially answered questions for variety in repeats
+    const shuffledPartiallyAnswered = [...partiallyAnsweredQuestions].sort(
       () => Math.random() - 0.5,
     );
+
+    // Combine: first all unanswered questions, then shuffled partially answered
+    const prioritizedQuestions = [...sortedUnansweredQuestions, ...shuffledPartiallyAnswered];
 
     let uniqueQuestions: Question[] = [];
     const seenQuestionIds = new Set<string>();
 
-    for (const question of shuffledQuestions) {
+    // First, try to get unique questions (up to 25)
+    for (const question of prioritizedQuestions) {
       if (!seenQuestionIds.has(question.question_id)) {
         seenQuestionIds.add(question.question_id);
         uniqueQuestions.push(question);
@@ -121,10 +161,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // If we don't have enough unique questions, fill with repeated questions
+    if (uniqueQuestions.length < 25) {
+      const remainingSlots = 25 - uniqueQuestions.length;
+      
+      // Get questions that have been answered but haven't reached target
+      // Sort by times_answered (ascending) to prioritize questions that need more evaluations
+      const repeatedQuestions = partiallyAnsweredQuestions
+        .sort((a, b) => (a.times_answered || 0) - (b.times_answered || 0))
+        .slice(0, remainingSlots);
+      
+      uniqueQuestions = [...uniqueQuestions, ...repeatedQuestions];
+    }
+
     if (uniqueQuestions.length === 0) {
       return NextResponse.json(
         {
-          error: "No unique questions available for evaluation.",
+          error: "No questions available for evaluation in this domain.",
         },
         { status: 404 },
       );
@@ -154,10 +207,14 @@ export async function POST(request: NextRequest) {
       uniqueQuestions = uniqueQuestions.slice(0, remainingSlots);
     }
 
+    // Track processed questions to prevent duplicates
+    const processedQuestionIdsSet = new Set<string>();
+    
     for (const question of uniqueQuestions) {
       if (
         !question.question_id ||
-        !question.question_text
+        !question.question_text ||
+        processedQuestionIdsSet.has(question.question_id)
       ) {
         continue;
       }
@@ -176,10 +233,14 @@ export async function POST(request: NextRequest) {
 
         const dynamoDb = getDynamoDbClient();
         await dynamoDb.send(updateCommand);
+        
+        // Only add to processed list if update was successful
+        processedQuestionIdsSet.add(question.question_id);
+        processedQuestionIds.push(question.question_id);
       } catch (error) {
+        console.error(`Failed to update times_answered for question ${question.question_id}:`, error);
+        // Continue processing other questions even if one fails
       }
-
-      processedQuestionIds.push(question.question_id);
     }
 
     const questionsMap: Record<string, QuestionAssignment> = {};
@@ -235,7 +296,7 @@ export async function POST(request: NextRequest) {
               ":updatedAt": new Date().toISOString(),
               ":userName": name,
               ":profession": profession,
-              ":defaultMax": 20,
+              ":defaultMax": 25,
             },
           });
 

@@ -11,6 +11,7 @@ export interface Question {
   target_evaluations?: number;
   theme?: string;
   times_answered?: number;
+  domain?: string;
   
   llm_response?: string;
   axis_scores?: Record<string, number>;

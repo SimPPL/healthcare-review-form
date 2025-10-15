@@ -37,22 +37,82 @@ export default function HomePage() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({
+    name: "",
+    profession: "",
+    email: "",
+    phone: "",
+  });
+
+  // Validation functions
+  const validateName = (name: string): string => {
+    const trimmed = name.trim();
+    if (!trimmed) return "Name is required";
+    if (trimmed.length < 2) return "Name must be at least 2 characters";
+    if (trimmed.length > 50) return "Name must be less than 50 characters";
+    if (!/^[a-zA-Z\s\-'\.]+$/.test(trimmed)) return "Name can only contain letters, spaces, hyphens, apostrophes, and periods";
+    if (/^\s|\s$/.test(name)) return "Name cannot start or end with spaces";
+    return "";
+  };
+
+  const validateEmail = (email: string): string => {
+    const trimmed = email.trim();
+    if (!trimmed) return "Email is required";
+    // More robust email validation
+    const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+    if (!emailRegex.test(trimmed)) return "Please enter a valid email address";
+    if (trimmed.length > 254) return "Email address is too long";
+    return "";
+  };
+
+  const validatePhone = (phone: string): string => {
+    if (!phone.trim()) return ""; // Phone is optional
+    const cleaned = phone.replace(/[\s\-\(\)\+]/g, "");
+    if (!/^\d+$/.test(cleaned)) return "Phone number can only contain digits, spaces, hyphens, parentheses, and plus signs";
+    if (cleaned.length < 10) return "Phone number must be at least 10 digits";
+    if (cleaned.length > 15) return "Phone number must be less than 15 digits";
+    return "";
+  };
+
+  const validateProfession = (profession: string): string => {
+    if (!profession) return "Medical profession is required";
+    const validProfessions = ["OB/GYN", "General Practitioner", "Dietitian", "Physiotherapist"];
+    if (!validProfessions.includes(profession)) return "Please select a valid medical profession";
+    return "";
+  };
+
+  const validateField = (field: string, value: string): string => {
+    switch (field) {
+      case "name":
+        return validateName(value);
+      case "email":
+        return validateEmail(value);
+      case "phone":
+        return validatePhone(value);
+      case "profession":
+        return validateProfession(value);
+      default:
+        return "";
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (
-      !formData.name.trim() ||
-      !formData.profession.trim() ||
-      !formData.email.trim()
-    ) {
-      setError("Name, medical profession, and email are required");
-      return;
-    }
+    // Validate all fields
+    const newFieldErrors = {
+      name: validateName(formData.name),
+      profession: validateProfession(formData.profession),
+      email: validateEmail(formData.email),
+      phone: validatePhone(formData.phone),
+    };
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email.trim())) {
-      setError("Please enter a valid email address");
+    setFieldErrors(newFieldErrors);
+
+    // Check if there are any validation errors
+    const hasErrors = Object.values(newFieldErrors).some(error => error !== "");
+    if (hasErrors) {
+      setError("Please fix the validation errors above");
       return;
     }
 
@@ -109,7 +169,13 @@ export default function HomePage() {
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
-    if (error) setError(""); // Clear error when user starts typing
+    
+    // Clear general error when user starts typing
+    if (error) setError("");
+    
+    // Real-time validation for the field being changed
+    const fieldError = validateField(field, value);
+    setFieldErrors((prev) => ({ ...prev, [field]: fieldError }));
   };
 
   return (
@@ -150,9 +216,13 @@ export default function HomePage() {
                   placeholder="Enter your full name"
                   value={formData.name}
                   onChange={(e) => handleInputChange("name", e.target.value)}
-                  className="w-full"
+                  className={`w-full ${fieldErrors.name ? "border-destructive" : ""}`}
                   disabled={isLoading}
+                  maxLength={50}
                 />
+                {fieldErrors.name && (
+                  <p className="text-xs text-destructive">{fieldErrors.name}</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -168,9 +238,13 @@ export default function HomePage() {
                   placeholder="Enter your email address"
                   value={formData.email}
                   onChange={(e) => handleInputChange("email", e.target.value)}
-                  className="w-full"
+                  className={`w-full ${fieldErrors.email ? "border-destructive" : ""}`}
                   disabled={isLoading}
+                  maxLength={254}
                 />
+                {fieldErrors.email && (
+                  <p className="text-xs text-destructive">{fieldErrors.email}</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -186,29 +260,42 @@ export default function HomePage() {
                   placeholder="Enter your phone number"
                   value={formData.phone}
                   onChange={(e) => handleInputChange("phone", e.target.value)}
-                  className="w-full"
+                  className={`w-full ${fieldErrors.phone ? "border-destructive" : ""}`}
                   disabled={isLoading}
+                  maxLength={20}
                 />
+                {fieldErrors.phone && (
+                  <p className="text-xs text-destructive">{fieldErrors.phone}</p>
+                )}
               </div>
 
               <div className="space-y-2">
                 <Label
-                  htmlFor="input-profession"
+                  htmlFor="select-profession"
                   className="text-xs sm:text-sm font-medium"
                 >
                   Medical Profession <span className="text-destructive">*</span>
                 </Label>
-                <Input
-                  id="input-profession"
-                  type="text"
-                  placeholder="e.g., Cardiologist, Emergency Medicine, Internal Medicine"
+                <Select
                   value={formData.profession}
-                  onChange={(e) =>
-                    handleInputChange("profession", e.target.value)
+                  onValueChange={(value) =>
+                    handleInputChange("profession", value)
                   }
-                  className="w-full"
                   disabled={isLoading}
-                />
+                >
+                  <SelectTrigger id="select-profession" className={fieldErrors.profession ? "border-destructive" : ""}>
+                    <SelectValue placeholder="Select your medical profession" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="OB/GYN">OB/GYN</SelectItem>
+                    <SelectItem value="General Practitioner">General Practitioner</SelectItem>
+                    <SelectItem value="Dietitian">Dietitian</SelectItem>
+                    <SelectItem value="Physiotherapist">Physiotherapist</SelectItem>
+                  </SelectContent>
+                </Select>
+                {fieldErrors.profession && (
+                  <p className="text-xs text-destructive">{fieldErrors.profession}</p>
+                )}
               </div>
 
               <div className="space-y-2">
