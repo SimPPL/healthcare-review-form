@@ -1,5 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getDynamoDbClient, RESPONSES_TABLE } from "@/lib/aws/dynamodb";
+import {
+  getDynamoDbClient,
+  RESPONSES_TABLE,
+  DATASET_TABLE,
+} from "@/lib/aws/dynamodb";
 import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
 export async function POST(request: NextRequest) {
@@ -59,11 +63,20 @@ export async function POST(request: NextRequest) {
     Object.keys(selectedQualities).forEach((questionId, index) => {
       const rubricKey = `#rubric${index}`;
       const feedbackKey = `#feedback${index}`;
+      const evalKey = `#eval${index}`;
 
       expressionAttributeNames[rubricKey] = questionId;
-      
+
       updateExpression += `, ${rubricsField}.${rubricKey} = :rubricData${index}`;
       updateExpression += `, #s.${rubricKey} = :statusValue${index}`;
+
+      // Add readable rubric evaluations (safe for existing users who don't have this field)
+      if (qualityPassFail && qualityPassFail[questionId]) {
+        updateExpression += `, rubric_evaluations.${evalKey} = :evalData${index}`;
+        expressionAttributeNames[evalKey] = questionId;
+        expressionAttributeValues[`:evalData${index}`] =
+          qualityPassFail[questionId];
+      }
 
       if (feedback && feedback[questionId]) {
         expressionAttributeNames[feedbackKey] = questionId;
@@ -80,11 +93,11 @@ export async function POST(request: NextRequest) {
         edited_rubrics: editedQualities || {},
       };
 
-      expressionAttributeValues[`:statusValue${index}`] = "classification_completed";
+      expressionAttributeValues[`:statusValue${index}`] =
+        "classification_completed";
     });
 
     expressionAttributeNames["#s"] = "status";
-
 
     if (answers && Object.keys(answers).length > 0) {
       updateExpression += ", answers = :answers";
@@ -103,6 +116,35 @@ export async function POST(request: NextRequest) {
 
     await dynamoDb.send(updateCommand);
 
+    // Only increment times_answered for original classifications (not edits)
+    // This ensures questions get properly tracked as completed
+    if (!isEdit) {
+      try {
+        // Increment times_answered for each completed question in the dataset table
+        const incrementPromises = Object.keys(selectedQualities).map(
+          async (questionId) => {
+            const incrementCommand = new UpdateCommand({
+              TableName: DATASET_TABLE,
+              Key: { question_id: questionId },
+              UpdateExpression:
+                "SET times_answered = if_not_exists(times_answered, :zero) + :inc",
+              ExpressionAttributeValues: {
+                ":inc": 1,
+                ":zero": 0,
+              },
+            });
+
+            await dynamoDb.send(incrementCommand);
+          },
+        );
+
+        await Promise.all(incrementPromises);
+      } catch (error) {
+        console.error("Error incrementing times_answered:", error);
+        // Don't fail the whole request if this fails, just log it
+      }
+    }
+
     return NextResponse.json({
       message: `${isEdit ? "Edited" : "Original"} rubric choices saved successfully`,
       isEdit,
@@ -120,10 +162,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error in save-rubric-choices:", error);
     return NextResponse.json(
-      { 
+      {
         error: "Internal server error",
         details: error instanceof Error ? error.message : "Unknown error",
-        stack: error instanceof Error ? error.stack : undefined
+        stack: error instanceof Error ? error.stack : undefined,
       },
       { status: 500 },
     );

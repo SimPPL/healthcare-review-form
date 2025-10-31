@@ -25,10 +25,10 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Error in export-responses:", error);
     return NextResponse.json(
-      { 
+      {
         error: "Failed to export responses. Please try again.",
         details: error instanceof Error ? error.message : "Unknown error",
-        stack: error instanceof Error ? error.stack : undefined
+        stack: error instanceof Error ? error.stack : undefined,
       },
       { status: 500 },
     );
@@ -80,6 +80,7 @@ function generateCSVResponse(users: any[], includeRawData: boolean) {
         edited_rubrics_pass_fail: "",
         rubrics_axes_info: "",
         additional_feedback: "",
+        rubric_evaluations_readable: "",
       });
       return rows;
     }
@@ -137,8 +138,6 @@ function generateCSVResponse(users: any[], includeRawData: boolean) {
         rubrics_axes_info: selectedRubrics.axes
           ? JSON.stringify(selectedRubrics.axes)
           : "",
-
-        // Edited Rubrics
         edited_rubrics: editedRubrics.rubrics
           ? editedRubrics.rubrics.join(", ")
           : "",
@@ -150,6 +149,11 @@ function generateCSVResponse(users: any[], includeRawData: boolean) {
           : "",
         edited_rubrics_pass_fail: editedRubrics.pass_fail
           ? JSON.stringify(editedRubrics.pass_fail)
+          : "",
+
+        // Readable Rubric Evaluations (safe for existing users)
+        rubric_evaluations_readable: userData.rubric_evaluations?.[questionId]
+          ? JSON.stringify(userData.rubric_evaluations[questionId])
           : "",
 
         // Axes Data
@@ -200,6 +204,7 @@ function generateCSVResponse(users: any[], includeRawData: boolean) {
     "edited_rubrics_at",
     "rubrics_pass_fail",
     "edited_rubrics_pass_fail",
+    "rubric_evaluations_readable",
     "rubrics_axes",
     "edited_rubrics_axes",
     "rubrics_axes_info",
@@ -241,9 +246,9 @@ function extractUserData(user: any) {
     user_name: user.user_name || "",
     medical_profession: user.medical_profession || user.user_profession || "",
     email: user.email || "",
-    phone_number: user.phone_number || user.phone || "",
-    clinical_experience: user.clinical_experience || "",
-    ai_exposure: user.ai_exposure || "",
+    phone_number: user.phone_number || user.phone || null,
+    clinical_experience: user.clinical_experience || null,
+    ai_exposure: user.ai_exposure || null,
     created_at: user.created_at || "",
     updated_at: user.updated_at || "",
 
@@ -272,6 +277,7 @@ function extractUserData(user: any) {
     list_of_rubrics_picked: user.list_of_rubrics_picked || {},
     edited_rubrics: user.edited_rubrics || {},
     additional_feedback: user.additional_feedback || {},
+    rubric_evaluations: user.rubric_evaluations || {},
 
     classification_data: user.classification_data || {},
 
@@ -345,10 +351,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error in export-responses POST:", error);
     return NextResponse.json(
-      { 
+      {
         error: "Failed to generate statistics. Please try again.",
         details: error instanceof Error ? error.message : "Unknown error",
-        stack: error instanceof Error ? error.stack : undefined
+        stack: error instanceof Error ? error.stack : undefined,
       },
       { status: 500 },
     );

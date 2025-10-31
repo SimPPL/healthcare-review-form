@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { NextStep, useNextStep } from "nextstepjs";
 import { tourSteps } from "@/lib/tour-steps";
 import CustomCard from "@/components/tour-card";
+import { CONFIG } from "@/lib/config";
 
 import type { UserResponse } from "@/types";
 
@@ -211,7 +212,8 @@ export default function ClassificationPage() {
 
       localStorage.removeItem("currentQuestionForClassification");
 
-      const totalQuestions = 25;
+      const totalQuestions = CONFIG.TOTAL_QUESTIONS;
+
       if (currentQuestionIndex < totalQuestions - 1) {
         const nextIndex = currentQuestionIndex + 1;
         localStorage.setItem("currentQuestionIndex", nextIndex.toString());
@@ -248,8 +250,7 @@ export default function ClassificationPage() {
   }
 
   return (
-    <NextStep steps={tourSteps} cardComponent={CustomCard}>
-      <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
+    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950">
         <div className="container mx-auto px-6 py-10 max-w-7xl">
           <div className="mb-12" id="classification-page-header">
             <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
@@ -290,13 +291,13 @@ export default function ClassificationPage() {
           <div className="space-y-8">
             <div className="text-center">
               <h2 className="text-lg sm:text-xl font-bold mb-2">
-                Question {currentQuestionIndex + 1} of 25
+                Question {currentQuestionIndex + 1} of {CONFIG.TOTAL_QUESTIONS}
               </h2>
               <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 mb-6">
                 <div
                   className="bg-[var(--color-purple-muted)] h-2 rounded-full transition-all duration-300"
                   style={{
-                    width: `${((currentQuestionIndex + 1) / 25) * 100}%`,
+                    width: `${((currentQuestionIndex + 1) / CONFIG.TOTAL_QUESTIONS) * 100}%`,
                   }}
                 ></div>
               </div>
@@ -326,16 +327,12 @@ export default function ClassificationPage() {
                         Your Response
                       </h3>
                       <span className="text-xs sm:text-sm text-muted-foreground">
-                        {currentQuestion.user_answer === "N/A"
-                          ? "0 words"
-                          : `${wordCounts.user} words`}
+                        {wordCounts.user} words
                       </span>
                     </div>
                     <div className="p-4 bg-slate-50 dark:bg-zinc-800/50 rounded-lg border max-h-64 overflow-y-auto">
                       <p className="text-sm whitespace-pre-wrap">
-                        {currentQuestion.user_answer === "N/A"
-                          ? "You skipped providing an answer for this question."
-                          : currentQuestion.user_answer || "No answer provided"}
+                        {currentQuestion.user_answer || "No answer provided"}
                       </p>
                     </div>
                   </div>
@@ -481,39 +478,17 @@ export default function ClassificationPage() {
             </Card>
           </div>
 
-          <Card
-            className="overflow-hidden shadow-lg border-2 border-slate-200 dark:border-slate-700"
-            id="question-context"
-          >
-            <CardHeader>
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center space-x-4">
-                  <div className="flex-shrink-0 w-10 h-10 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-lg font-bold">
-                    {currentQuestionIndex + 1}
-                  </div>
-                  <CardTitle className="text-lg sm:text-xl">
-                    {currentQuestion.question_text}
-                  </CardTitle>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-8">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base sm:text-lg font-semibold">
-                      Your Response
-                    </h3>
-                    <span className="text-xs sm:text-sm text-muted-foreground">
-                      {wordCounts.user} words
-                    </span>
-                  </div>
-                  <div className="p-4 bg-slate-50 dark:bg-zinc-800/50 rounded-lg border max-h-64 overflow-y-auto">
-                    <p className="text-sm whitespace-pre-wrap">
-                      {currentQuestion.user_answer || "No answer provided"}
-                    </p>
-                  </div>
-                </div>
+          <div className="mt-12 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
+            <Button
+              onClick={() => router.push("/questions")}
+              variant="outline"
+              size="lg"
+              disabled={isSubmitting}
+              className="flex items-center justify-center"
+            >
+              <ArrowLeft className="mr-2 h-5 w-5" />
+              Back to Question
+            </Button>
 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -545,18 +520,13 @@ export default function ClassificationPage() {
                     Evaluate the Response
                   </h2>
                   <div className="space-y-3">
-                    <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
-                      For each quality below, select Yes if the response meets
-                      the quality, or No if it doesn't. Skip any that don't
-                      apply.
-                    </p>
+                  <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
+                    For each quality below, select Yes if the response meets the quality, or No if it doesn't. Skip any that don't apply.
+                  </p>
                   </div>
                 </div>
 
-                <div
-                  className="overflow-x-auto bg-white dark:bg-zinc-900 rounded-lg border"
-                  id="rubric-table"
-                >
+                <div className="overflow-x-auto bg-white dark:bg-zinc-900 rounded-lg border" id="rubric-table">
                   <table className="w-full">
                     <thead className="bg-slate-50 dark:bg-zinc-800">
                       <tr>
@@ -578,10 +548,7 @@ export default function ClassificationPage() {
                             {quality}
                           </td>
                           <td className="text-center p-3 border-b">
-                            <div
-                              className="flex justify-center gap-2"
-                              id={idx === 0 ? "pass-fail-example" : undefined}
-                            >
+                            <div className="flex justify-center gap-2" id={idx === 0 ? "pass-fail-example" : undefined}>
                               <label className="flex items-center cursor-pointer">
                                 <input
                                   type="radio"
@@ -664,13 +631,7 @@ export default function ClassificationPage() {
             Back to Question
           </Button>
 
-          <Button
-            onClick={handleSubmit}
-            size="lg"
-            disabled={isSubmitting}
-            id="save-continue-button"
-            className="flex items-center justify-center"
-          >
+          <Button onClick={handleSubmit} size="lg" disabled={isSubmitting} id="save-continue-button" className="flex items-center justify-center">
             {isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -678,7 +639,7 @@ export default function ClassificationPage() {
               </>
             ) : (
               <>
-                {currentQuestionIndex < 24
+                {currentQuestionIndex < CONFIG.TOTAL_QUESTIONS - 1
                   ? "Next Question"
                   : "Complete Review"}
                 <ArrowRight className="ml-2 h-5 w-5" />
@@ -687,6 +648,6 @@ export default function ClassificationPage() {
           </Button>
         </div>
       </div>
-    </NextStep>
+    </div>
   );
 }

@@ -4,11 +4,7 @@ import {
   DATASET_TABLE,
   RESPONSES_TABLE,
 } from "@/lib/aws/dynamodb";
-import {
-  ScanCommand,
-  UpdateCommand,
-  PutCommand,
-} from "@aws-sdk/lib-dynamodb";
+import { ScanCommand, UpdateCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { v4 as uuidv4 } from "uuid";
 import {
   Question,
@@ -20,9 +16,9 @@ import {
 // Mapping from profession dropdown values to domain values
 const PROFESSION_TO_DOMAIN_MAP: Record<string, string> = {
   "OB/GYN": "Gynecology & Maternal Health",
-  "General Practitioner": "General Health & Primary Care", 
-  "Dietitian": "Nutrition & Dietetics",
-  "Physiotherapist": "Physical Therapy & Recovery"
+  "General Practitioner": "General Health & Primary Care",
+  Dietitian: "Nutrition & Dietetics",
+  Physiotherapist: "Physical Therapy & Recovery",
 };
 
 export async function POST(request: NextRequest) {
@@ -92,13 +88,14 @@ export async function POST(request: NextRequest) {
       const dynamoDb = getDynamoDbClient();
       const scanCommand = new ScanCommand({
         TableName: DATASET_TABLE,
-        FilterExpression: "times_answered < target_evaluations AND #domain = :domain",
+        FilterExpression:
+          "times_answered < target_evaluations AND #domain = :domain",
         ExpressionAttributeNames: {
-          "#domain": "domain"
+          "#domain": "domain",
         },
         ExpressionAttributeValues: {
-          ":domain": selectedDomain
-        }
+          ":domain": selectedDomain,
+        },
       });
       scanResult = await dynamoDb.send(scanCommand);
     } catch (error) {
@@ -123,8 +120,7 @@ export async function POST(request: NextRequest) {
     if (availableQuestions.length === 0) {
       return NextResponse.json(
         {
-          error:
-            `No questions available for evaluation in the ${selectedDomain} domain. All questions may have reached their target evaluations.`,
+          error: `No questions available for evaluation in the ${selectedDomain} domain. All questions may have reached their target evaluations.`,
         },
         { status: 404 },
       );
@@ -133,12 +129,16 @@ export async function POST(request: NextRequest) {
     // Separate questions into two groups:
     // 1. Questions that haven't been answered yet (times_answered = 0)
     // 2. Questions that have been answered but haven't reached target (times_answered > 0)
-    const unansweredQuestions = availableQuestions.filter(q => (q.times_answered || 0) === 0);
-    const partiallyAnsweredQuestions = availableQuestions.filter(q => (q.times_answered || 0) > 0);
+    const unansweredQuestions = availableQuestions.filter(
+      (q) => (q.times_answered || 0) === 0,
+    );
+    const partiallyAnsweredQuestions = availableQuestions.filter(
+      (q) => (q.times_answered || 0) > 0,
+    );
 
     // Sort unanswered questions by question_id for consistent ordering
-    const sortedUnansweredQuestions = unansweredQuestions.sort((a, b) => 
-      a.question_id.localeCompare(b.question_id)
+    const sortedUnansweredQuestions = unansweredQuestions.sort((a, b) =>
+      a.question_id.localeCompare(b.question_id),
     );
 
     // Shuffle partially answered questions for variety in repeats
@@ -147,7 +147,10 @@ export async function POST(request: NextRequest) {
     );
 
     // Combine: first all unanswered questions, then shuffled partially answered
-    const prioritizedQuestions = [...sortedUnansweredQuestions, ...shuffledPartiallyAnswered];
+    const prioritizedQuestions = [
+      ...sortedUnansweredQuestions,
+      ...shuffledPartiallyAnswered,
+    ];
 
     let uniqueQuestions: Question[] = [];
     const seenQuestionIds = new Set<string>();
@@ -164,13 +167,13 @@ export async function POST(request: NextRequest) {
     // If we don't have enough unique questions, fill with repeated questions
     if (uniqueQuestions.length < 25) {
       const remainingSlots = 25 - uniqueQuestions.length;
-      
+
       // Get questions that have been answered but haven't reached target
       // Sort by times_answered (ascending) to prioritize questions that need more evaluations
       const repeatedQuestions = partiallyAnsweredQuestions
         .sort((a, b) => (a.times_answered || 0) - (b.times_answered || 0))
         .slice(0, remainingSlots);
-      
+
       uniqueQuestions = [...uniqueQuestions, ...repeatedQuestions];
     }
 
@@ -209,7 +212,7 @@ export async function POST(request: NextRequest) {
 
     // Track processed questions to prevent duplicates
     const processedQuestionIdsSet = new Set<string>();
-    
+
     for (const question of uniqueQuestions) {
       if (
         !question.question_id ||
@@ -219,36 +222,15 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      try {
-        const updateCommand = new UpdateCommand({
-          TableName: DATASET_TABLE,
-          Key: { question_id: question.question_id },
-          UpdateExpression:
-            "SET times_answered = if_not_exists(times_answered, :zero) + :inc",
-          ExpressionAttributeValues: {
-            ":inc": 1,
-            ":zero": 0,
-          },
-        });
-
-        const dynamoDb = getDynamoDbClient();
-        await dynamoDb.send(updateCommand);
-        
-        // Only add to processed list if update was successful
-        processedQuestionIdsSet.add(question.question_id);
-        processedQuestionIds.push(question.question_id);
-      } catch (error) {
-        console.error(`Failed to update times_answered for question ${question.question_id}:`, error);
-        // Continue processing other questions even if one fails
-      }
+      // Just track the question as processed - don't increment times_answered yet
+      // times_answered should only be incremented when user completes the question
+      processedQuestionIdsSet.add(question.question_id);
+      processedQuestionIds.push(question.question_id);
     }
 
     const questionsMap: Record<string, QuestionAssignment> = {};
     for (const question of uniqueQuestions) {
-      if (
-        !question.question_id ||
-        !question.question_text
-      ) {
+      if (!question.question_id || !question.question_text) {
         continue;
       }
 
@@ -317,9 +299,9 @@ export async function POST(request: NextRequest) {
           user_name: name,
           email: email,
           medical_profession: profession,
-          phone_number: phone || "",
-          clinical_experience: clinicalExperience || "",
-          ai_exposure: aiExposure || "",
+          phone_number: phone || undefined,
+          clinical_experience: clinicalExperience || undefined,
+          ai_exposure: aiExposure || undefined,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           questions_assigned: questionIds,
@@ -333,6 +315,7 @@ export async function POST(request: NextRequest) {
           list_of_rubrics_picked: {},
           edited_rubrics: {},
           additional_feedback: {},
+          rubric_evaluations: {},
           questions: questionsMap,
         };
 

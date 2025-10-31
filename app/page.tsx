@@ -50,7 +50,8 @@ export default function HomePage() {
     if (!trimmed) return "Name is required";
     if (trimmed.length < 2) return "Name must be at least 2 characters";
     if (trimmed.length > 50) return "Name must be less than 50 characters";
-    if (!/^[a-zA-Z\s\-'\.]+$/.test(trimmed)) return "Name can only contain letters, spaces, hyphens, apostrophes, and periods";
+    if (!/^[a-zA-Z\s\-'\.]+$/.test(trimmed))
+      return "Name can only contain letters, spaces, hyphens, apostrophes, and periods";
     if (/^\s|\s$/.test(name)) return "Name cannot start or end with spaces";
     return "";
   };
@@ -59,7 +60,8 @@ export default function HomePage() {
     const trimmed = email.trim();
     if (!trimmed) return "Email is required";
     // More robust email validation
-    const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+    const emailRegex =
+      /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
     if (!emailRegex.test(trimmed)) return "Please enter a valid email address";
     if (trimmed.length > 254) return "Email address is too long";
     return "";
@@ -68,7 +70,8 @@ export default function HomePage() {
   const validatePhone = (phone: string): string => {
     if (!phone.trim()) return ""; // Phone is optional
     const cleaned = phone.replace(/[\s\-\(\)\+]/g, "");
-    if (!/^\d+$/.test(cleaned)) return "Phone number can only contain digits, spaces, hyphens, parentheses, and plus signs";
+    if (!/^\d+$/.test(cleaned))
+      return "Phone number can only contain digits, spaces, hyphens, parentheses, and plus signs";
     if (cleaned.length < 10) return "Phone number must be at least 10 digits";
     if (cleaned.length > 15) return "Phone number must be less than 15 digits";
     return "";
@@ -76,8 +79,14 @@ export default function HomePage() {
 
   const validateProfession = (profession: string): string => {
     if (!profession) return "Medical profession is required";
-    const validProfessions = ["OB/GYN", "General Practitioner", "Dietitian", "Physiotherapist"];
-    if (!validProfessions.includes(profession)) return "Please select a valid medical profession";
+    const validProfessions = [
+      "OB/GYN",
+      "General Practitioner",
+      "Dietitian",
+      "Physiotherapist",
+    ];
+    if (!validProfessions.includes(profession))
+      return "Please select a valid medical profession";
     return "";
   };
 
@@ -110,7 +119,9 @@ export default function HomePage() {
     setFieldErrors(newFieldErrors);
 
     // Check if there are any validation errors
-    const hasErrors = Object.values(newFieldErrors).some(error => error !== "");
+    const hasErrors = Object.values(newFieldErrors).some(
+      (error) => error !== "",
+    );
     if (hasErrors) {
       setError("Please fix the validation errors above");
       return;
@@ -169,10 +180,10 @@ export default function HomePage() {
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
-    
+
     // Clear general error when user starts typing
     if (error) setError("");
-    
+
     // Real-time validation for the field being changed
     const fieldError = validateField(field, value);
     setFieldErrors((prev) => ({ ...prev, [field]: fieldError }));
@@ -243,7 +254,9 @@ export default function HomePage() {
                   maxLength={254}
                 />
                 {fieldErrors.email && (
-                  <p className="text-xs text-destructive">{fieldErrors.email}</p>
+                  <p className="text-xs text-destructive">
+                    {fieldErrors.email}
+                  </p>
                 )}
               </div>
 
@@ -265,7 +278,9 @@ export default function HomePage() {
                   maxLength={20}
                 />
                 {fieldErrors.phone && (
-                  <p className="text-xs text-destructive">{fieldErrors.phone}</p>
+                  <p className="text-xs text-destructive">
+                    {fieldErrors.phone}
+                  </p>
                 )}
               </div>
 
@@ -283,18 +298,29 @@ export default function HomePage() {
                   }
                   disabled={isLoading}
                 >
-                  <SelectTrigger id="select-profession" className={fieldErrors.profession ? "border-destructive" : ""}>
+                  <SelectTrigger
+                    id="select-profession"
+                    className={
+                      fieldErrors.profession ? "border-destructive" : ""
+                    }
+                  >
                     <SelectValue placeholder="Select your medical profession" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="OB/GYN">OB/GYN</SelectItem>
-                    <SelectItem value="General Practitioner">General Practitioner</SelectItem>
+                    <SelectItem value="General Practitioner">
+                      General Practitioner
+                    </SelectItem>
                     <SelectItem value="Dietitian">Dietitian</SelectItem>
-                    <SelectItem value="Physiotherapist">Physiotherapist</SelectItem>
+                    <SelectItem value="Physiotherapist">
+                      Physiotherapist
+                    </SelectItem>
                   </SelectContent>
                 </Select>
                 {fieldErrors.profession && (
-                  <p className="text-xs text-destructive">{fieldErrors.profession}</p>
+                  <p className="text-xs text-destructive">
+                    {fieldErrors.profession}
+                  </p>
                 )}
               </div>
 

@@ -12,7 +12,7 @@ export interface Question {
   theme?: string;
   times_answered?: number;
   domain?: string;
-  
+
   llm_response?: string;
   axis_scores?: Record<string, number>;
   classification?: string;
@@ -106,6 +106,8 @@ export interface UserResponseRecord {
 
   additional_feedback: Record<string, string>;
 
+  // New readable format for rubric evaluations - optional to not break existing users
+  rubric_evaluations?: Record<string, Record<string, "pass" | "fail">>;
 
   questions?: Record<string, QuestionAssignment>;
 }
@@ -119,4 +121,3 @@ export interface UserInfo {
   aiExposure?: string;
   extraInfo?: string;
 }
-

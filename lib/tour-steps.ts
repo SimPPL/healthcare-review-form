@@ -1,10 +1,22 @@
-import { Tour } from 'nextstepjs';
+import { Tour } from "nextstepjs";
 interface ExtendedStep {
   title: string;
   content: string;
   selector: string;
   icon: string;
-  side: "bottom" | "right" | "left" | "top" | "top-left" | "top-right" | "bottom-left" | "bottom-right" | "left-top" | "left-bottom" | "right-top" | "right-bottom";
+  side:
+    | "bottom"
+    | "right"
+    | "left"
+    | "top"
+    | "top-left"
+    | "top-right"
+    | "bottom-left"
+    | "bottom-right"
+    | "left-top"
+    | "left-bottom"
+    | "right-top"
+    | "right-bottom";
   image?: string;
   imageAlt?: string;
 }
@@ -20,14 +32,16 @@ export const tourSteps: ExtendedTour[] = [
     steps: [
       {
         title: "Welcome!",
-        content: "In this section, you'll provide your expert answers to a series of clinical questions. Let's get started.",
+        content:
+          "In this section, you'll provide your expert answers to a series of clinical questions. Let's get started.",
         selector: "#questions-page-header",
         icon: "👋",
         side: "bottom",
       },
       {
         title: "The Question",
-        content: "Here's the clinical question. Take a moment to consider the best possible response.",
+        content:
+          "Here's the clinical question. Take a moment to consider the best possible response.",
         selector: "#current-question",
         icon: "❓",
         side: "right",
@@ -62,7 +76,8 @@ export const tourSteps: ExtendedTour[] = [
       },
       {
         title: "Ready to Evaluate?",
-        content: "When you're happy with your final answer, click here to move on to the evaluation stage.",
+        content:
+          "When you're happy with your final answer, click here to move on to the evaluation stage.",
         selector: "#continue-button",
         icon: "➡️",
         side: "top",
@@ -82,7 +97,7 @@ export const tourSteps: ExtendedTour[] = [
       {
         title: "Evaluate the Response",
         content: "Each quality is a checklist for a perfect answer. Select 'Yes' if 'Our Response' meets this quality standard, or 'No' if it doesn't. You can click again to change your selection.",
-        selector: "#rubric-table", 
+        selector: "#rubric-table",
         icon: "📊",
         side: "top",
         image: "/response.png",
@@ -90,7 +105,8 @@ export const tourSteps: ExtendedTour[] = [
       },
       {
         title: "Save and Finish",
-        content: "Once you've evaluated at least 8 quality checks, click here to save your work and move to the next question.",
+        content:
+          "Once you've evaluated at least 8 quality checks, click here to save your work and move to the next question.",
         selector: "#save-continue-button",
         icon: "💾",
         side: "top",
