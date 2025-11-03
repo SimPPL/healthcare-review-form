@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
       const scanCommand = new ScanCommand({
         TableName: DATASET_TABLE,
         FilterExpression:
-          "times_answered < target_evaluations AND #domain = :domain",
+          "(attribute_not_exists(times_answered) OR times_answered < target_evaluations) AND #domain = :domain",
         ExpressionAttributeNames: {
           "#domain": "domain",
         },
@@ -272,9 +272,9 @@ export async function POST(request: NextRequest) {
               "#s": "status",
             },
             ExpressionAttributeValues: {
-              ":questions": { ...existingUser.questions, ...questionsMap },
+              ":questions": { ...(existingUser.questions || {}), ...questionsMap },
               ":questionsAssigned": updatedQuestionsAssigned,
-              ":status": { ...existingUser.status, ...newStatuses },
+              ":status": { ...(existingUser.status || {}), ...newStatuses },
               ":updatedAt": new Date().toISOString(),
               ":userName": name,
               ":profession": profession,

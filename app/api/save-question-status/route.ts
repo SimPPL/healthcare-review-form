@@ -46,13 +46,23 @@ export async function POST(request: NextRequest) {
     }
 
     const currentTime = new Date().toISOString();
+    
+    // Build update expression - only update questions field if it exists for this user
+    // For returning users without questions field, we'll only update the status
+    const hasQuestionsField = currentUser.questions && currentUser.questions[questionId];
+    let updateExpression = "SET #statusField.#qid = :status, updated_at = :updatedAt";
+    
+    // Only update questions field if it exists (safe for returning users)
+    if (hasQuestionsField) {
+      updateExpression = "SET #statusField.#qid = :status, questions.#qid.#statusSub = :status, updated_at = :updatedAt";
+    }
+    
     const updateCommand = new UpdateCommand({
       TableName: RESPONSES_TABLE,
       Key: {
         user_id: userId,
       },
-      UpdateExpression:
-        "SET #statusField.#qid = :status, questions.#qid.#statusSub = :status, updated_at = :updatedAt",
+      UpdateExpression: updateExpression,
       ExpressionAttributeNames: {
         "#statusField": "status",
         "#qid": questionId,

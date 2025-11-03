@@ -68,13 +68,33 @@ export default function QuestionsPage() {
 
   useEffect(() => {
     if (questions.length > 0) {
-      const completed = parseInt(
+      // Find the first question that is NOT fully completed (classification_completed)
+      // This ensures returning users start on their next unanswered question
+      let targetIndex = 0;
+      const storedIndex = parseInt(
         localStorage.getItem("currentQuestionIndex") || "0",
       );
-      setCurrentQuestionIndex(completed);
 
-      if (questions[completed]) {
-        const currentQuestionData = questions[completed];
+      // First, try to find the first incomplete question based on status
+      const firstIncompleteIndex = questions.findIndex(
+        (q) => q.status !== "classification_completed"
+      );
+
+      if (firstIncompleteIndex !== -1) {
+        // Found an incomplete question - use it
+        targetIndex = firstIncompleteIndex;
+      } else if (storedIndex >= 0 && storedIndex < questions.length) {
+        // All questions completed, or fallback to stored index if valid
+        targetIndex = storedIndex;
+      } else {
+        // Default to last question if all are completed
+        targetIndex = questions.length - 1;
+      }
+
+      setCurrentQuestionIndex(targetIndex);
+
+      if (questions[targetIndex]) {
+        const currentQuestionData = questions[targetIndex];
         const questionId = currentQuestionData.question_id;
 
         const dbAnswer = currentQuestionData.user_answer || "";
@@ -92,7 +112,10 @@ export default function QuestionsPage() {
         setIsSaving(false);
         setWordCount(finalAnswer ? finalAnswer.trim().split(/\s+/).length : 0);
 
-        if (completed === 0 && !hasSeenTour) {
+        // Save the current index to localStorage for navigation
+        localStorage.setItem("currentQuestionIndex", targetIndex.toString());
+
+        if (targetIndex === 0 && !hasSeenTour) {
           setTimeout(() => {
             startNextStep("questionsTour");
             localStorage.setItem("questionsTourSeen", "true");
@@ -238,18 +261,23 @@ export default function QuestionsPage() {
       }
 
       if (nextQuestion) {
+        // Load answer from database first, then fallback to localStorage
+        const dbAnswer = nextQuestion.user_answer || "";
         const storedAnswer = localStorage.getItem(
           `answer_${nextQuestion.question_id}`,
         );
+        const finalAnswer = dbAnswer || storedAnswer || "";
+
         const storedShowAI =
           localStorage.getItem(`showAI_${nextQuestion.question_id}`) === "true";
+        const shouldShowAI = dbAnswer ? true : storedShowAI;
 
-        setAnswer(storedAnswer || "");
-        setEditedAnswer(storedAnswer || "");
-        setShowAIResponse(storedShowAI);
+        setAnswer(finalAnswer);
+        setEditedAnswer(finalAnswer);
+        setShowAIResponse(shouldShowAI);
         setIsEditing(false);
         setWordCount(
-          storedAnswer ? storedAnswer.trim().split(/\s+/).length : 0,
+          finalAnswer ? finalAnswer.trim().split(/\s+/).length : 0,
         );
       }
       setError("");

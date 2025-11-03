@@ -192,6 +192,7 @@ export default function ClassificationPage() {
         body: JSON.stringify({
           userId,
           selectedQualities: questionData,
+          qualityCategories: passFailData,
           qualityPassFail: passFailData,
           editedQualities,
           feedback: feedbackData,
@@ -481,210 +482,40 @@ export default function ClassificationPage() {
             </Card>
           </div>
 
-          <Card
-            className="overflow-hidden shadow-lg border-2 border-slate-200 dark:border-slate-700"
-            id="question-context"
-          >
-            <CardHeader>
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center space-x-4">
-                  <div className="flex-shrink-0 w-10 h-10 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-lg font-bold">
-                    {currentQuestionIndex + 1}
-                  </div>
-                  <CardTitle className="text-lg sm:text-xl">
-                    {currentQuestion.question_text}
-                  </CardTitle>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-8">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base sm:text-lg font-semibold">
-                      Your Response
-                    </h3>
-                    <span className="text-xs sm:text-sm text-muted-foreground">
-                      {wordCounts.user} words
-                    </span>
-                  </div>
-                  <div className="p-4 bg-slate-50 dark:bg-zinc-800/50 rounded-lg border max-h-64 overflow-y-auto">
-                    <p className="text-sm whitespace-pre-wrap">
-                      {currentQuestion.user_answer || "No answer provided"}
-                    </p>
-                  </div>
-                </div>
+          <div className="mt-12 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
+            <Button
+              onClick={() => router.push("/questions")}
+              variant="outline"
+              size="lg"
+              disabled={isSubmitting}
+              className="flex items-center justify-center"
+            >
+              <ArrowLeft className="mr-2 h-5 w-5" />
+              Back to Question
+            </Button>
 
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base sm:text-lg font-semibold">
-                      Our Response
-                    </h3>
-                    <span className="text-xs sm:text-sm text-muted-foreground">
-                      {wordCounts.ai} words
-                    </span>
-                  </div>
-                  <div className="p-4 bg-slate-50 dark:bg-zinc-800/50 rounded-lg border max-h-64 overflow-y-auto">
-                    <p className="text-sm whitespace-pre-wrap">
-                      {currentQuestion.llm_response}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="overflow-hidden shadow-lg border-2 border-slate-200 dark:border-slate-700">
-            <CardContent className="p-6">
-              <div className="space-y-6">
-                <div className="text-center md:text-left">
-                  <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 mb-3">
-                    <div className="w-6 h-6 bg-[var(--color-purple-muted)] text-white rounded-full flex items-center justify-center text-sm font-bold">
-                      1
-                    </div>
-                    Evaluate the Response
-                  </h2>
-                  <div className="space-y-3">
-                    <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
-                      For each quality below, select Yes if the response meets
-                      the quality, or No if it doesn't. Skip any that don't
-                      apply.
-                    </p>
-                  </div>
-                </div>
-
-                <div
-                  className="overflow-x-auto bg-white dark:bg-zinc-900 rounded-lg border"
-                  id="rubric-table"
-                >
-                  <table className="w-full">
-                    <thead className="bg-slate-50 dark:bg-zinc-800">
-                      <tr>
-                        <th className="text-left p-3 font-semibold text-sm border-b min-w-[200px]">
-                          Qualities
-                        </th>
-                        <th className="text-center p-3 font-semibold text-sm border-b min-w-[200px]">
-                          Yes/No
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {currentQuestion.rubrics?.map((quality, idx) => (
-                        <tr
-                          key={quality}
-                          className={`${idx % 2 === 0 ? "bg-white dark:bg-zinc-900" : "bg-slate-25 dark:bg-zinc-800/30"} hover:bg-slate-50 dark:hover:bg-zinc-800/50`}
-                        >
-                          <td className="p-3 text-xs sm:text-sm font-medium border-b">
-                            {quality}
-                          </td>
-                          <td className="text-center p-3 border-b">
-                            <div
-                              className="flex justify-center gap-2"
-                              id={idx === 0 ? "pass-fail-example" : undefined}
-                            >
-                              <label className="flex items-center cursor-pointer">
-                                <input
-                                  type="radio"
-                                  name={`passfail-${quality}`}
-                                  value="pass"
-                                  checked={qualityPassFail[quality] === "pass"}
-                                  onChange={() =>
-                                    handlePassFailSelection(quality, "pass")
-                                  }
-                                  className="sr-only"
-                                />
-                                <span
-                                  className={`px-4 py-2 rounded text-sm font-semibold ${
-                                    qualityPassFail[quality] === "pass"
-                                      ? "bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100"
-                                      : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-                                  }`}
-                                >
-                                  Yes
-                                </span>
-                              </label>
-                              <label className="flex items-center cursor-pointer">
-                                <input
-                                  type="radio"
-                                  name={`passfail-${quality}`}
-                                  value="fail"
-                                  checked={qualityPassFail[quality] === "fail"}
-                                  onChange={() =>
-                                    handlePassFailSelection(quality, "fail")
-                                  }
-                                  className="sr-only"
-                                />
-                                <span
-                                  className={`px-4 py-2 rounded text-sm font-semibold ${
-                                    qualityPassFail[quality] === "fail"
-                                      ? "bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-100"
-                                      : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-                                  }`}
-                                >
-                                  No
-                                </span>
-                              </label>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="space-y-3 mt-8" id="additional-feedback">
-                <label
-                  htmlFor="feedback"
-                  className="text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-200"
-                >
-                  Additional Feedback (Optional):
-                </label>
-                <Textarea
-                  id="feedback"
-                  placeholder="Share any additional insights about this response..."
-                  value={feedback}
-                  onChange={(e) => setFeedback(e.target.value)}
-                  className="min-h-[100px] text-sm sm:text-base resize-y"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="mt-12 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
-          <Button
-            onClick={() => router.push("/questions")}
-            variant="outline"
-            size="lg"
-            disabled={isSubmitting}
-            className="flex items-center justify-center"
-          >
-            <ArrowLeft className="mr-2 h-5 w-5" />
-            Back to Question
-          </Button>
-
-          <Button
-            onClick={handleSubmit}
-            size="lg"
-            disabled={isSubmitting}
-            id="save-continue-button"
-            className="flex items-center justify-center"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                {currentQuestionIndex < 24
-                  ? "Next Question"
-                  : "Complete Review"}
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </>
-            )}
-          </Button>
+            <Button
+              onClick={handleSubmit}
+              size="lg"
+              disabled={isSubmitting}
+              id="save-continue-button"
+              className="flex items-center justify-center"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  {currentQuestionIndex < 24
+                    ? "Next Question"
+                    : "Complete Review"}
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     </NextStep>

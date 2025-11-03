@@ -4,7 +4,7 @@ import {
   RESPONSES_TABLE,
   DATASET_TABLE,
 } from "@/lib/aws/dynamodb";
-import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 
 export async function POST(request: NextRequest) {
   try {
@@ -53,6 +53,48 @@ export async function POST(request: NextRequest) {
     }
 
     const rubricsField = isEdit ? "edited_rubrics" : "list_of_rubrics_picked";
+    const dynamoDb = getDynamoDbClient();
+
+    // Get current user status to check if questions are already completed (prevents double-counting)
+    let currentStatus: Record<string, string> = {};
+    try {
+      const getUserCommand = new GetCommand({
+        TableName: RESPONSES_TABLE,
+        Key: { user_id: userId },
+        ProjectionExpression: "#statusField, rubric_evaluations",
+        ExpressionAttributeNames: {
+          "#statusField": "status",
+        },
+      });
+      const userResult = await dynamoDb.send(getUserCommand);
+      
+      if (userResult.Item) {
+        currentStatus = userResult.Item.status || {};
+        
+        // For old users: Check if rubric_evaluations exists, initialize it if it doesn't
+        // This must be done BEFORE the main update to avoid path overlap errors
+        const hasRubricEvaluations = qualityPassFail && Object.keys(qualityPassFail).length > 0;
+        if (hasRubricEvaluations) {
+          // If rubric_evaluations doesn't exist or is null for old users, initialize it first
+          if (userResult.Item.rubric_evaluations === undefined || 
+              userResult.Item.rubric_evaluations === null) {
+            const initCommand = new UpdateCommand({
+              TableName: RESPONSES_TABLE,
+              Key: { user_id: userId },
+              UpdateExpression: "SET rubric_evaluations = if_not_exists(rubric_evaluations, :emptyMap)",
+              ExpressionAttributeValues: {
+                ":emptyMap": {},
+              },
+            });
+            await dynamoDb.send(initCommand);
+          }
+        }
+      }
+    } catch (initError) {
+      // Log but don't fail - we'll try to set nested values anyway
+      // DynamoDB might auto-create the parent map when setting nested paths
+      console.warn("Could not fetch user status or initialize rubric_evaluations, will attempt update:", initError);
+    }
 
     let updateExpression = "SET updated_at = :updatedAt";
     const expressionAttributeNames: Record<string, string> = {};
@@ -104,7 +146,22 @@ export async function POST(request: NextRequest) {
       expressionAttributeValues[":answers"] = answers;
     }
 
-    const dynamoDb = getDynamoDbClient();
+    // Increment questions_answered only when classification is completed (not on edits)
+    // This ensures questions are only counted when fully completed, not just when answer is saved
+    // IMPORTANT: Only count questions that aren't already classified to prevent double-counting
+    if (!isEdit) {
+      // Count unique questions being classified for the FIRST TIME (not already completed)
+      const newCompletions = Object.keys(selectedQualities).filter(
+        (questionId) => currentStatus[questionId] !== "classification_completed"
+      );
+      const newCompletionCount = newCompletions.length;
+      
+      if (newCompletionCount > 0) {
+        updateExpression += ", questions_answered = if_not_exists(questions_answered, :zero) + :increment";
+        expressionAttributeValues[":zero"] = 0;
+        expressionAttributeValues[":increment"] = newCompletionCount;
+      }
+    }
 
     const updateCommand = new UpdateCommand({
       TableName: RESPONSES_TABLE,

@@ -110,7 +110,9 @@ function generateCSVResponse(users: any[], includeRawData: boolean) {
 
         // Questions summary
         total_questions_assigned: userData.questions_assigned.length,
-        total_questions_answered: userData.questions_answered.length,
+        total_questions_answered: typeof userData.questions_answered === 'number' 
+          ? userData.questions_answered 
+          : (Array.isArray(userData.questions_answered) ? userData.questions_answered.length : 0),
 
         // Question-specific data
         question_id: questionId,

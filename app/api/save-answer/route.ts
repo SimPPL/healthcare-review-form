@@ -24,19 +24,12 @@ export async function POST(request: NextRequest) {
       ":updatedAt": new Date().toISOString(),
     };
 
-    if (!isEdit) {
-      baseExpressionAttributeValues[":zero"] = 0;
-      baseExpressionAttributeValues[":increment"] = 1;
-    }
-
     const updateCommand = new UpdateCommand({
       TableName: RESPONSES_TABLE,
       Key: {
         user_id: userId,
       },
-      UpdateExpression: isEdit
-        ? `SET ${answerField}.#qid = :answer, #status.#qid = :statusValue, updated_at = :updatedAt`
-        : `SET ${answerField}.#qid = :answer, #status.#qid = :statusValue, updated_at = :updatedAt, questions_answered = if_not_exists(questions_answered, :zero) + :increment`,
+      UpdateExpression: `SET ${answerField}.#qid = :answer, #status.#qid = :statusValue, updated_at = :updatedAt`,
       ExpressionAttributeNames: {
         "#qid": questionId,
         "#status": "status",
