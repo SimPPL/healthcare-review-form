@@ -11,6 +11,7 @@ export interface Question {
   target_evaluations?: number;
   theme?: string;
   times_answered?: number;
+  assigned_count?: number;
   domain?: string;
 
   llm_response?: string;

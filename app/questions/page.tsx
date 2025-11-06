@@ -25,6 +25,7 @@ import type { UserResponse } from "@/types";
 import { NextStep, useNextStep } from "nextstepjs";
 import { tourSteps } from "@/lib/tour-steps";
 import CustomCard from "@/components/tour-card";
+import { SAMPLE_QUESTIONS } from "@/lib/sample-data";
 
 export default function QuestionsPage() {
   const router = useRouter();
@@ -51,6 +52,7 @@ export default function QuestionsPage() {
     const storedUserName = localStorage.getItem("userName");
     const tourSeen = localStorage.getItem("questionsTourSeen");
     const aiTourSeen = localStorage.getItem("questionsTourAISeen");
+    const demoMode = localStorage.getItem("demoMode");
 
     if (!storedUserId) {
       router.push("/");
@@ -61,7 +63,13 @@ export default function QuestionsPage() {
     setUserName(storedUserName);
     setHasSeenTour(!!tourSeen);
     setHasSeenAITour(!!aiTourSeen);
-    fetchQuestions(storedUserId);
+    
+    // Check if we're in demo mode
+    if (demoMode === "true") {
+      fetchDemoQuestions();
+    } else {
+      fetchQuestions(storedUserId);
+    }
   }, [router]);
 
   const currentQuestion = questions[currentQuestionIndex];
@@ -126,6 +134,20 @@ export default function QuestionsPage() {
     }
   }, [questions, hasSeenTour, startNextStep]);
 
+  const fetchDemoQuestions = () => {
+    try {
+      setError("");
+      // Use sample questions for demo mode
+      setQuestions(SAMPLE_QUESTIONS);
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to load demo questions";
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const fetchQuestions = async (userIdParam: string) => {
     try {
       setError("");
@@ -170,23 +192,27 @@ export default function QuestionsPage() {
       return;
     }
 
+    const demoMode = localStorage.getItem("demoMode");
     setIsSaving(true);
     setError("");
 
     try {
-      const response = await fetch("/api/save-answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId,
-          questionId: currentQuestion?.question_id,
-          userAnswer: answer.trim(),
-          isEdit: false,
-        }),
-      });
+      // Skip API call in demo mode
+      if (demoMode !== "true") {
+        const response = await fetch("/api/save-answer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId,
+            questionId: currentQuestion?.question_id,
+            userAnswer: answer.trim(),
+            isEdit: false,
+          }),
+        });
 
-      if (!response.ok) {
-        throw new Error("Failed to save unbiased answer");
+        if (!response.ok) {
+          throw new Error("Failed to save unbiased answer");
+        }
       }
 
       setShowAIResponse(true);
@@ -217,20 +243,25 @@ export default function QuestionsPage() {
   const saveEdit = async () => {
     if (!currentQuestion || !editedAnswer.trim()) return;
 
-    try {
-      const response = await fetch("/api/save-answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId,
-          questionId: currentQuestion.question_id,
-          userAnswer: editedAnswer.trim(),
-          isEdit: true,
-        }),
-      });
+    const demoMode = localStorage.getItem("demoMode");
 
-      if (!response.ok) {
-        throw new Error("Failed to save edited answer");
+    try {
+      // Skip API call in demo mode
+      if (demoMode !== "true") {
+        const response = await fetch("/api/save-answer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId,
+            questionId: currentQuestion.question_id,
+            userAnswer: editedAnswer.trim(),
+            isEdit: true,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to save edited answer");
+        }
       }
 
       setAnswer(editedAnswer);
@@ -306,22 +337,26 @@ export default function QuestionsPage() {
       return;
     }
 
+    const demoMode = localStorage.getItem("demoMode");
     setIsSaving(true);
     setError("");
 
     try {
-      const saveAnswerResponse = await fetch("/api/save-answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId,
-          questionId: currentQuestion.question_id,
-          userAnswer: answer.trim(),
-        }),
-      });
+      // Skip API call in demo mode
+      if (demoMode !== "true") {
+        const saveAnswerResponse = await fetch("/api/save-answer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId,
+            questionId: currentQuestion.question_id,
+            userAnswer: answer.trim(),
+          }),
+        });
 
-      if (!saveAnswerResponse.ok) {
-        throw new Error("Failed to save answer");
+        if (!saveAnswerResponse.ok) {
+          throw new Error("Failed to save answer");
+        }
       }
 
       localStorage.setItem(

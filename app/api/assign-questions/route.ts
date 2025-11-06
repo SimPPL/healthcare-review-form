@@ -126,55 +126,88 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Separate questions into two groups:
-    // 1. Questions that haven't been answered yet (times_answered = 0)
-    // 2. Questions that have been answered but haven't reached target (times_answered > 0)
-    const unansweredQuestions = availableQuestions.filter(
-      (q) => (q.times_answered || 0) === 0,
+    // Separate questions by assigned_count to prevent duplicates until all are assigned
+    // 1. Questions that have never been assigned (assigned_count = 0 or null)
+    // 2. Questions that have been assigned at least once (assigned_count > 0)
+    const neverAssignedQuestions = availableQuestions.filter(
+      (q) => (q.assigned_count || 0) === 0,
     );
-    const partiallyAnsweredQuestions = availableQuestions.filter(
-      (q) => (q.times_answered || 0) > 0,
-    );
-
-    // Sort unanswered questions by question_id for consistent ordering
-    const sortedUnansweredQuestions = unansweredQuestions.sort((a, b) =>
-      a.question_id.localeCompare(b.question_id),
+    const alreadyAssignedQuestions = availableQuestions.filter(
+      (q) => (q.assigned_count || 0) > 0,
     );
 
-    // Shuffle partially answered questions for variety in repeats
-    const shuffledPartiallyAnswered = [...partiallyAnsweredQuestions].sort(
-      () => Math.random() - 0.5,
-    );
-
-    // Combine: first all unanswered questions, then shuffled partially answered
-    const prioritizedQuestions = [
-      ...sortedUnansweredQuestions,
-      ...shuffledPartiallyAnswered,
-    ];
+    // Check if all questions have been assigned at least once
+    const allQuestionsAssigned = neverAssignedQuestions.length === 0;
 
     let uniqueQuestions: Question[] = [];
     const seenQuestionIds = new Set<string>();
 
-    // First, try to get unique questions (up to 25)
-    for (const question of prioritizedQuestions) {
-      if (!seenQuestionIds.has(question.question_id)) {
-        seenQuestionIds.add(question.question_id);
-        uniqueQuestions.push(question);
-        if (uniqueQuestions.length >= 25) break;
+    if (!allQuestionsAssigned) {
+      // Phase 1: Assign only never-assigned questions until all are assigned
+      // Sort by question_id for consistent ordering
+      const sortedNeverAssigned = neverAssignedQuestions.sort((a, b) =>
+        a.question_id.localeCompare(b.question_id),
+      );
+
+      // Get up to 25 unique never-assigned questions
+      for (const question of sortedNeverAssigned) {
+        if (!seenQuestionIds.has(question.question_id)) {
+          seenQuestionIds.add(question.question_id);
+          uniqueQuestions.push(question);
+          if (uniqueQuestions.length >= 25) break;
+        }
       }
-    }
+    } else {
+      // Phase 2: All questions have been assigned at least once, now allow repeats
+      // Separate by times_answered for prioritization
+      const unansweredQuestions = availableQuestions.filter(
+        (q) => (q.times_answered || 0) === 0,
+      );
+      const partiallyAnsweredQuestions = availableQuestions.filter(
+        (q) => (q.times_answered || 0) > 0,
+      );
 
-    // If we don't have enough unique questions, fill with repeated questions
-    if (uniqueQuestions.length < 25) {
-      const remainingSlots = 25 - uniqueQuestions.length;
+      // Sort unanswered questions by question_id for consistent ordering
+      const sortedUnansweredQuestions = unansweredQuestions.sort((a, b) =>
+        a.question_id.localeCompare(b.question_id),
+      );
 
-      // Get questions that have been answered but haven't reached target
-      // Sort by times_answered (ascending) to prioritize questions that need more evaluations
-      const repeatedQuestions = partiallyAnsweredQuestions
-        .sort((a, b) => (a.times_answered || 0) - (b.times_answered || 0))
-        .slice(0, remainingSlots);
+      // Shuffle partially answered questions for variety in repeats
+      const shuffledPartiallyAnswered = [...partiallyAnsweredQuestions].sort(
+        () => Math.random() - 0.5,
+      );
 
-      uniqueQuestions = [...uniqueQuestions, ...repeatedQuestions];
+      // Combine: first all unanswered questions, then shuffled partially answered
+      const prioritizedQuestions = [
+        ...sortedUnansweredQuestions,
+        ...shuffledPartiallyAnswered,
+      ];
+
+      // First, try to get unique questions (up to 25)
+      for (const question of prioritizedQuestions) {
+        if (!seenQuestionIds.has(question.question_id)) {
+          seenQuestionIds.add(question.question_id);
+          uniqueQuestions.push(question);
+          if (uniqueQuestions.length >= 25) break;
+        }
+      }
+
+      // If we don't have enough unique questions, fill with repeated questions
+      if (uniqueQuestions.length < 25) {
+        const remainingSlots = 25 - uniqueQuestions.length;
+
+        // Get questions that have been answered but haven't reached target
+        // Filter out questions already in uniqueQuestions to prevent duplicates
+        // Sort by times_answered (ascending) to prioritize questions that need more evaluations
+        const repeatedQuestions = partiallyAnsweredQuestions
+          .filter((q) => !seenQuestionIds.has(q.question_id))
+          .sort((a, b) => (a.times_answered || 0) - (b.times_answered || 0))
+          .slice(0, remainingSlots);
+
+        // Add to seenQuestionIds to prevent future duplicates
+        repeatedQuestions.forEach((q) => seenQuestionIds.add(q.question_id));
+        uniqueQuestions = [...uniqueQuestions, ...repeatedQuestions];
+      }
     }
 
     if (uniqueQuestions.length === 0) {
@@ -205,6 +238,12 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      // Filter out questions that the user already has assigned
+      const existingQuestionsSet = new Set(existingQuestionsAssigned);
+      uniqueQuestions = uniqueQuestions.filter(
+        (q) => !existingQuestionsSet.has(q.question_id)
+      );
+
       // Calculate how many more questions we can assign
       const remainingSlots = maxQuestions - existingQuestionsAssigned.length;
       uniqueQuestions = uniqueQuestions.slice(0, remainingSlots);
@@ -222,15 +261,40 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Just track the question as processed - don't increment times_answered yet
-      // times_answered should only be incremented when user completes the question
-      processedQuestionIdsSet.add(question.question_id);
-      processedQuestionIds.push(question.question_id);
+      // Increment assigned_count when question is assigned
+      // This prevents duplicate assignments until all questions are assigned at least once
+      try {
+        const updateCommand = new UpdateCommand({
+          TableName: DATASET_TABLE,
+          Key: { question_id: question.question_id },
+          UpdateExpression:
+            "SET assigned_count = if_not_exists(assigned_count, :zero) + :inc",
+          ExpressionAttributeValues: {
+            ":inc": 1,
+            ":zero": 0,
+          },
+        });
+
+        const dynamoDb = getDynamoDbClient();
+        await dynamoDb.send(updateCommand);
+        
+        // Only add to processed list if update was successful
+        processedQuestionIdsSet.add(question.question_id);
+        processedQuestionIds.push(question.question_id);
+      } catch (error) {
+        console.error(`Failed to update assigned_count for question ${question.question_id}:`, error);
+        // Continue processing other questions even if one fails
+      }
     }
 
+    // Only include questions that were successfully processed (assigned_count updated)
     const questionsMap: Record<string, QuestionAssignment> = {};
     for (const question of uniqueQuestions) {
-      if (!question.question_id || !question.question_text) {
+      if (
+        !question.question_id ||
+        !question.question_text ||
+        !processedQuestionIdsSet.has(question.question_id)
+      ) {
         continue;
       }
 

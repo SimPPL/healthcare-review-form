@@ -139,7 +139,7 @@ export default function HomePage() {
         body: JSON.stringify({
           userInfo: {
             name: formData.name.trim(),
-            profession: formData.profession.trim(),
+            profession: formData.profession?.trim() || formData.profession,
             email: formData.email.trim(),
             phone: formData.phone.trim(),
             clinicalExperience: formData.clinicalExperience,
@@ -167,6 +167,10 @@ export default function HomePage() {
 
       const data = await response.json();
 
+      // Clear demo mode if it was previously set (from admin login)
+      // This ensures normal users see their assigned questions, not demo questions
+      localStorage.removeItem("demoMode");
+      
       localStorage.setItem("userId", data.userId);
       localStorage.setItem("userName", formData.name.trim());
 
@@ -403,6 +407,14 @@ export default function HomePage() {
             </form>
           </CardContent>
         </Card>
+        <div className="mt-4 text-center">
+          <a
+            href="/admin"
+            className="text-xs text-muted-foreground hover:text-foreground underline"
+          >
+            Admin Demo Access
+          </a>
+        </div>
       </div>
     </div>
   );

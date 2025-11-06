@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { NextStep, useNextStep } from "nextstepjs";
 import { tourSteps } from "@/lib/tour-steps";
 import CustomCard from "@/components/tour-card";
+import { SAMPLE_QUESTIONS } from "@/lib/sample-data";
 
 import type { UserResponse } from "@/types";
 
@@ -24,6 +25,7 @@ export default function ClassificationPage() {
   const [error, setError] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
 
   const [qualityPassFail, setQualityPassFail] = useState<
     Record<string, "pass" | "fail" | "">
@@ -41,12 +43,14 @@ export default function ClassificationPage() {
     try {
       const storedUserId = localStorage.getItem("userId");
       const tourSeen = localStorage.getItem("classificationTourSeen");
+      const demoMode = localStorage.getItem("demoMode");
 
       if (!storedUserId) {
         router.push("/");
         return;
       }
       setUserId(storedUserId);
+      setIsDemoMode(demoMode === "true");
 
       const currentQuestionInfo = localStorage.getItem(
         "currentQuestionForClassification",
@@ -62,7 +66,12 @@ export default function ClassificationPage() {
           }, 1500);
         }
 
-        fetchCurrentQuestion(storedUserId, questionId);
+        // Check if we're in demo mode
+        if (demoMode === "true") {
+          fetchDemoQuestion(questionId);
+        } else {
+          fetchCurrentQuestion(storedUserId, questionId);
+        }
       } else {
         setError("No question selected for classification.");
         setIsLoading(false);
@@ -72,6 +81,39 @@ export default function ClassificationPage() {
       setIsLoading(false);
     }
   }, [router, startNextStep]);
+
+  const fetchDemoQuestion = (questionId: string) => {
+    setIsLoading(true);
+    setError("");
+    try {
+      // Find question from sample data
+      const question = SAMPLE_QUESTIONS.find(
+        (q) => q.question_id === questionId,
+      );
+      if (!question) {
+        throw new Error("Question not found");
+      }
+
+      const storedAnswer = localStorage.getItem(`answer_${questionId}`);
+
+      const enhancedQuestion = { ...question };
+      if (storedAnswer && storedAnswer.trim()) {
+        enhancedQuestion.user_answer = storedAnswer.trim();
+        enhancedQuestion.status = "answered" as const;
+      }
+
+      setCurrentQuestion(enhancedQuestion);
+
+      setWordCounts({
+        user: countWords(enhancedQuestion.user_answer || ""),
+        ai: countWords(enhancedQuestion.llm_response || ""),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch question");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const fetchCurrentQuestion = async (
     userIdParam: string,
@@ -94,15 +136,11 @@ export default function ClassificationPage() {
       }
 
       const storedAnswer = localStorage.getItem(`answer_${questionId}`);
-      const storedRating = localStorage.getItem(`rating_${questionId}`);
 
       const enhancedQuestion = { ...question };
       if (storedAnswer && storedAnswer.trim()) {
         enhancedQuestion.user_answer = storedAnswer.trim();
         enhancedQuestion.status = "answered" as const;
-      }
-      if (storedRating) {
-        enhancedQuestion.llm_rating = parseInt(storedRating, 10);
       }
 
       setCurrentQuestion(enhancedQuestion);
@@ -168,6 +206,7 @@ export default function ClassificationPage() {
       return;
     }
 
+    const demoMode = localStorage.getItem("demoMode");
     setIsSubmitting(true);
     setError("");
 
@@ -186,23 +225,26 @@ export default function ClassificationPage() {
 
       const editedQualities = editedRubrics;
 
-      const response = await fetch("/api/save-rubric-choices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId,
-          selectedQualities: questionData,
-          qualityCategories: passFailData,
-          qualityPassFail: passFailData,
-          editedQualities,
-          feedback: feedbackData,
-          isEdit: false,
-        }),
-      });
+      // Skip API call in demo mode
+      if (demoMode !== "true") {
+        const response = await fetch("/api/save-rubric-choices", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId,
+            selectedQualities: questionData,
+            qualityCategories: passFailData,
+            qualityPassFail: passFailData,
+            editedQualities,
+            feedback: feedbackData,
+            isEdit: false,
+          }),
+        });
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to save data");
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to save data");
+        }
       }
 
       localStorage.setItem(
@@ -212,7 +254,7 @@ export default function ClassificationPage() {
 
       localStorage.removeItem("currentQuestionForClassification");
 
-      const totalQuestions = 25;
+      const totalQuestions = demoMode === "true" ? 5 : 25;
       if (currentQuestionIndex < totalQuestions - 1) {
         const nextIndex = currentQuestionIndex + 1;
         localStorage.setItem("currentQuestionIndex", nextIndex.toString());
@@ -291,13 +333,13 @@ export default function ClassificationPage() {
           <div className="space-y-8">
             <div className="text-center">
               <h2 className="text-lg sm:text-xl font-bold mb-2">
-                Question {currentQuestionIndex + 1} of 25
+                Question {currentQuestionIndex + 1} of {isDemoMode ? 5 : 25}
               </h2>
               <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 mb-6">
                 <div
                   className="bg-[var(--color-purple-muted)] h-2 rounded-full transition-all duration-300"
                   style={{
-                    width: `${((currentQuestionIndex + 1) / 25) * 100}%`,
+                    width: `${((currentQuestionIndex + 1) / (isDemoMode ? 5 : 25)) * 100}%`,
                   }}
                 ></div>
               </div>
@@ -508,7 +550,7 @@ export default function ClassificationPage() {
                 </>
               ) : (
                 <>
-                  {currentQuestionIndex < 24
+                  {currentQuestionIndex < (isDemoMode ? 4 : 24)
                     ? "Next Question"
                     : "Complete Review"}
                   <ArrowRight className="ml-2 h-5 w-5" />
