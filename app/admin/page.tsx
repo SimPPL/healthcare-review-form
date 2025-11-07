@@ -115,7 +115,7 @@ export default function AdminPage() {
               <p className="text-xs text-muted-foreground text-center mt-4 px-2">
                 This is a demo mode without database connectivity.
                 <br />
-                Password hint: admin123
+                Password hint: admin
               </p>
             </form>
           </CardContent>
