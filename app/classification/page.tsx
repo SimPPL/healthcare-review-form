@@ -27,6 +27,8 @@ export default function ClassificationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
 
+  const demoQuestionCount = SAMPLE_QUESTIONS.length;
+
   const [qualityPassFail, setQualityPassFail] = useState<
     Record<string, "pass" | "fail" | "">
   >({});
@@ -94,16 +96,17 @@ export default function ClassificationPage() {
         throw new Error("Question not found");
       }
 
-      const storedAnswer = localStorage.getItem(`answer_${questionId}`);
+      const enhancedQuestion = {
+        ...question,
+        user_answer: "",
+        status: "assigned" as const,
+      };
 
-      const enhancedQuestion = { ...question };
-      if (storedAnswer && storedAnswer.trim()) {
-        enhancedQuestion.user_answer = storedAnswer.trim();
-        enhancedQuestion.status = "answered" as const;
-      }
+      localStorage.removeItem(`answer_${questionId}`);
+      localStorage.removeItem(`showAI_${questionId}`);
+      localStorage.removeItem(`classification_${questionId}`);
 
       setCurrentQuestion(enhancedQuestion);
-
       setWordCounts({
         user: countWords(enhancedQuestion.user_answer || ""),
         ai: countWords(enhancedQuestion.llm_response || ""),
@@ -138,7 +141,7 @@ export default function ClassificationPage() {
       const storedAnswer = localStorage.getItem(`answer_${questionId}`);
 
       const enhancedQuestion = { ...question };
-      if (storedAnswer && storedAnswer.trim()) {
+      if (!isDemoMode && storedAnswer && storedAnswer.trim()) {
         enhancedQuestion.user_answer = storedAnswer.trim();
         enhancedQuestion.status = "answered" as const;
       }
@@ -254,7 +257,8 @@ export default function ClassificationPage() {
 
       localStorage.removeItem("currentQuestionForClassification");
 
-      const totalQuestions = demoMode === "true" ? 5 : 25;
+      const totalQuestions =
+        demoMode === "true" ? demoQuestionCount : 25;
       if (currentQuestionIndex < totalQuestions - 1) {
         const nextIndex = currentQuestionIndex + 1;
         localStorage.setItem("currentQuestionIndex", nextIndex.toString());
@@ -333,13 +337,18 @@ export default function ClassificationPage() {
           <div className="space-y-8">
             <div className="text-center">
               <h2 className="text-lg sm:text-xl font-bold mb-2">
-                Question {currentQuestionIndex + 1} of {isDemoMode ? 5 : 25}
+                Question {currentQuestionIndex + 1} of{" "}
+                {isDemoMode ? demoQuestionCount : 25}
               </h2>
               <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 mb-6">
                 <div
                   className="bg-[var(--color-purple-muted)] h-2 rounded-full transition-all duration-300"
                   style={{
-                    width: `${((currentQuestionIndex + 1) / (isDemoMode ? 5 : 25)) * 100}%`,
+                    width: `${
+                      ((currentQuestionIndex + 1) /
+                        (isDemoMode ? demoQuestionCount : 25)) *
+                      100
+                    }%`,
                   }}
                 ></div>
               </div>

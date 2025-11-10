@@ -137,8 +137,33 @@ export default function QuestionsPage() {
   const fetchDemoQuestions = () => {
     try {
       setError("");
-      // Use sample questions for demo mode
-      setQuestions(SAMPLE_QUESTIONS);
+
+      const enhancedQuestions = SAMPLE_QUESTIONS.map((question) => {
+        const classificationKey = `classification_${question.question_id}`;
+        const classificationStatus = localStorage.getItem(classificationKey);
+        const derivedStatus: UserResponse["status"] =
+          classificationStatus === "completed"
+            ? "classification_completed"
+            : "assigned";
+
+        return {
+          ...question,
+          user_answer: "",
+          status: derivedStatus,
+        };
+      });
+
+      SAMPLE_QUESTIONS.forEach((question) => {
+        localStorage.removeItem(`answer_${question.question_id}`);
+        localStorage.removeItem(`showAI_${question.question_id}`);
+        localStorage.removeItem(`classification_${question.question_id}`);
+      });
+      localStorage.removeItem("questionsTourSeen");
+      localStorage.removeItem("questionsTourAISeen");
+      localStorage.removeItem("currentQuestionIndex");
+      localStorage.removeItem("currentQuestionForClassification");
+
+      setQuestions(enhancedQuestions);
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : "Failed to load demo questions";

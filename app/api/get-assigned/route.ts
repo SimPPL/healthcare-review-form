@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
         questionData,
       ] of Object.entries<QuestionAssignment>(userRecord.questions)) {
         let rubrics: string[] = [];
+        let axisRubricMap: Record<string, string[]> | null = null;
 
         try {
           const dynamoDb = getDynamoDbClient();
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
             new GetCommand({
               TableName: DATASET_TABLE,
               Key: { question_id: questionId },
-              ProjectionExpression: "rubrics",
+              ProjectionExpression: "rubrics, axis_rubric_map",
             }),
           );
 
@@ -77,6 +78,19 @@ export async function GET(request: NextRequest) {
               }
             } else if (Array.isArray(datasetResult.Item.rubrics)) {
               rubrics = datasetResult.Item.rubrics;
+            }
+          }
+
+          if (datasetResult.Item?.axis_rubric_map) {
+            const rawAxisMap = datasetResult.Item.axis_rubric_map;
+            if (typeof rawAxisMap === "string") {
+              try {
+                axisRubricMap = JSON.parse(rawAxisMap);
+              } catch {
+                axisRubricMap = null;
+              }
+            } else if (typeof rawAxisMap === "object") {
+              axisRubricMap = rawAxisMap as Record<string, string[]>;
             }
           }
         } catch (err) {
@@ -118,6 +132,7 @@ export async function GET(request: NextRequest) {
           rubric_scores: typedQuestionData.rubric_scores || {},
           axis_scores: typedQuestionData.axis_scores || {},
           classification: typedQuestionData.classification || "",
+          axis_rubric_map: axisRubricMap,
         });
       }
     }
