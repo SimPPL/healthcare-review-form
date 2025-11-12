@@ -177,8 +177,13 @@ export async function POST(request: NextRequest) {
     // This ensures questions get properly tracked as completed
     if (!isEdit) {
       try {
-        // Increment times_answered for each completed question in the dataset table
-        const incrementPromises = Object.keys(selectedQualities).map(
+        // Only increment times_answered for questions being completed for the FIRST TIME
+        const newCompletions = Object.keys(selectedQualities).filter(
+          (questionId) => currentStatus[questionId] !== "classification_completed"
+        );
+        
+        // Increment times_answered for each newly completed question in the dataset table
+        const incrementPromises = newCompletions.map(
           async (questionId) => {
             const incrementCommand = new UpdateCommand({
               TableName: DATASET_TABLE,

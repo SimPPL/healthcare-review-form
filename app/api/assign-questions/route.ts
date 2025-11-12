@@ -117,15 +117,6 @@ export async function POST(request: NextRequest) {
     const availableQuestions: Question[] = (scanResult.Items ||
       []) as Question[];
 
-    if (availableQuestions.length === 0) {
-      return NextResponse.json(
-        {
-          error: `No questions available for evaluation in the ${selectedDomain} domain. All questions may have reached their target evaluations.`,
-        },
-        { status: 404 },
-      );
-    }
-
     // Separate questions by assigned_count to prevent duplicates until all are assigned
     // 1. Questions that have never been assigned (assigned_count = 0 or null)
     // 2. Questions that have been assigned at least once (assigned_count > 0)
@@ -149,12 +140,58 @@ export async function POST(request: NextRequest) {
         a.question_id.localeCompare(b.question_id),
       );
 
-      // Get up to 25 unique never-assigned questions
+      // Get up to 25 unique never-assigned questions from selected domain
       for (const question of sortedNeverAssigned) {
         if (!seenQuestionIds.has(question.question_id)) {
           seenQuestionIds.add(question.question_id);
           uniqueQuestions.push(question);
           if (uniqueQuestions.length >= 25) break;
+        }
+      }
+
+      // Fallback: If we don't have enough questions from selected domain,
+      // fetch never-assigned questions from other domains
+      if (uniqueQuestions.length < 25) {
+        try {
+          const dynamoDb = getDynamoDbClient();
+          const fallbackScanCommand = new ScanCommand({
+            TableName: DATASET_TABLE,
+            FilterExpression:
+              "(attribute_not_exists(assigned_count) OR assigned_count = :zero) AND (attribute_not_exists(times_answered) OR times_answered < target_evaluations) AND #domain <> :domain",
+            ExpressionAttributeNames: {
+              "#domain": "domain",
+            },
+            ExpressionAttributeValues: {
+              ":domain": selectedDomain,
+              ":zero": 0,
+            },
+          });
+          const fallbackScanResult = await dynamoDb.send(fallbackScanCommand);
+          const fallbackQuestions: Question[] = (fallbackScanResult.Items ||
+            []) as Question[];
+
+          // Randomly shuffle and pick from other domains to fill remaining slots
+          const shuffledFallback = [...fallbackQuestions].sort(
+            () => Math.random() - 0.5,
+          );
+          const remainingSlots = 25 - uniqueQuestions.length;
+
+          for (const question of shuffledFallback) {
+            if (
+              !seenQuestionIds.has(question.question_id) &&
+              (question.assigned_count || 0) === 0
+            ) {
+              seenQuestionIds.add(question.question_id);
+              uniqueQuestions.push(question);
+              if (uniqueQuestions.length >= 25) break;
+            }
+          }
+        } catch (error) {
+          console.warn(
+            "Failed to fetch fallback questions from other domains:",
+            error,
+          );
+          // Continue with what we have - don't fail the request
         }
       }
     } else {
@@ -167,24 +204,12 @@ export async function POST(request: NextRequest) {
         (q) => (q.times_answered || 0) > 0,
       );
 
-      // Sort unanswered questions by question_id for consistent ordering
+      // Step 1: First assign unanswered questions from selected domain
       const sortedUnansweredQuestions = unansweredQuestions.sort((a, b) =>
         a.question_id.localeCompare(b.question_id),
       );
 
-      // Shuffle partially answered questions for variety in repeats
-      const shuffledPartiallyAnswered = [...partiallyAnsweredQuestions].sort(
-        () => Math.random() - 0.5,
-      );
-
-      // Combine: first all unanswered questions, then shuffled partially answered
-      const prioritizedQuestions = [
-        ...sortedUnansweredQuestions,
-        ...shuffledPartiallyAnswered,
-      ];
-
-      // First, try to get unique questions (up to 25)
-      for (const question of prioritizedQuestions) {
+      for (const question of sortedUnansweredQuestions) {
         if (!seenQuestionIds.has(question.question_id)) {
           seenQuestionIds.add(question.question_id);
           uniqueQuestions.push(question);
@@ -192,21 +217,115 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // If we don't have enough unique questions, fill with repeated questions
+      // Step 2: If still need more, fetch unanswered questions from other domains
+      if (uniqueQuestions.length < 25) {
+        try {
+          const dynamoDb = getDynamoDbClient();
+          const fallbackScanCommand = new ScanCommand({
+            TableName: DATASET_TABLE,
+            FilterExpression:
+              "(attribute_not_exists(times_answered) OR times_answered = :zero) AND (attribute_not_exists(times_answered) OR times_answered < target_evaluations) AND #domain <> :domain",
+            ExpressionAttributeNames: {
+              "#domain": "domain",
+            },
+            ExpressionAttributeValues: {
+              ":domain": selectedDomain,
+              ":zero": 0,
+            },
+          });
+          const fallbackScanResult = await dynamoDb.send(fallbackScanCommand);
+          const fallbackQuestions: Question[] = (fallbackScanResult.Items ||
+            []) as Question[];
+
+          // Only get unanswered questions (times_answered = 0) from other domains
+          const unansweredFallback = fallbackQuestions.filter(
+            (q) => (q.times_answered || 0) === 0,
+          );
+
+          // Shuffle for variety
+          const shuffledUnanswered = [...unansweredFallback].sort(
+            () => Math.random() - 0.5,
+          );
+
+          const remainingSlots = 25 - uniqueQuestions.length;
+          for (const question of shuffledUnanswered) {
+            if (!seenQuestionIds.has(question.question_id)) {
+              seenQuestionIds.add(question.question_id);
+              uniqueQuestions.push(question);
+              if (uniqueQuestions.length >= 25) break;
+            }
+          }
+        } catch (error) {
+          console.warn(
+            "Failed to fetch fallback unanswered questions from other domains:",
+            error,
+          );
+          // Continue with what we have - don't fail the request
+        }
+      }
+
+      // Step 3: If still need more, assign partially answered questions from selected domain
       if (uniqueQuestions.length < 25) {
         const remainingSlots = 25 - uniqueQuestions.length;
 
-        // Get questions that have been answered but haven't reached target
-        // Filter out questions already in uniqueQuestions to prevent duplicates
-        // Sort by times_answered (ascending) to prioritize questions that need more evaluations
-        const repeatedQuestions = partiallyAnsweredQuestions
+        // Shuffle partially answered questions for variety
+        const shuffledPartiallyAnswered = [...partiallyAnsweredQuestions]
           .filter((q) => !seenQuestionIds.has(q.question_id))
-          .sort((a, b) => (a.times_answered || 0) - (b.times_answered || 0))
+          .sort(() => Math.random() - 0.5)
           .slice(0, remainingSlots);
 
         // Add to seenQuestionIds to prevent future duplicates
-        repeatedQuestions.forEach((q) => seenQuestionIds.add(q.question_id));
-        uniqueQuestions = [...uniqueQuestions, ...repeatedQuestions];
+        shuffledPartiallyAnswered.forEach((q) =>
+          seenQuestionIds.add(q.question_id),
+        );
+        uniqueQuestions = [...uniqueQuestions, ...shuffledPartiallyAnswered];
+      }
+
+      // Step 4: If still need more, fetch partially answered questions from other domains
+      if (uniqueQuestions.length < 25) {
+        try {
+          const dynamoDb = getDynamoDbClient();
+          const fallbackScanCommand = new ScanCommand({
+            TableName: DATASET_TABLE,
+            FilterExpression:
+              "(attribute_not_exists(times_answered) OR times_answered < target_evaluations) AND #domain <> :domain",
+            ExpressionAttributeNames: {
+              "#domain": "domain",
+            },
+            ExpressionAttributeValues: {
+              ":domain": selectedDomain,
+            },
+          });
+          const fallbackScanResult = await dynamoDb.send(fallbackScanCommand);
+          const fallbackQuestions: Question[] = (fallbackScanResult.Items ||
+            []) as Question[];
+
+          // Get partially answered questions from other domains
+          const partiallyAnsweredFallback = fallbackQuestions.filter(
+            (q) => (q.times_answered || 0) > 0,
+          );
+
+          // Shuffle for variety and sort by times_answered (ascending) to prioritize questions that need more evaluations
+          const shuffledPartiallyAnswered = [...partiallyAnsweredFallback]
+            .filter((q) => !seenQuestionIds.has(q.question_id))
+            .sort((a, b) => (a.times_answered || 0) - (b.times_answered || 0))
+            .sort(() => Math.random() - 0.5);
+
+          const remainingSlots = 25 - uniqueQuestions.length;
+          for (const question of shuffledPartiallyAnswered) {
+            if (!seenQuestionIds.has(question.question_id)) {
+              seenQuestionIds.add(question.question_id);
+              uniqueQuestions.push(question);
+              if (uniqueQuestions.length >= 25) break;
+            }
+          }
+        } catch (error) {
+          console.warn(
+            "Failed to fetch fallback partially answered questions from other domains:",
+            error,
+          );
+          // Continue with what we have - don't fail the request
+        }
       }
     }
 
