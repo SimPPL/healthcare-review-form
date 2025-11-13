@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
 import Image from "next/image";
+import { SAMPLE_QUESTIONS } from "@/lib/sample-data";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -29,6 +30,17 @@ export default function AdminPage() {
     // Simple password check - no complex authentication needed
     if (password === "admin") {
       setIsLoading(true);
+      
+      // Clear all previous demo data to ensure fresh start
+      SAMPLE_QUESTIONS.forEach((question) => {
+        localStorage.removeItem(`answer_${question.question_id}`);
+        localStorage.removeItem(`showAI_${question.question_id}`);
+        localStorage.removeItem(`classification_${question.question_id}`);
+      });
+      localStorage.removeItem("questionsTourSeen");
+      localStorage.removeItem("questionsTourAISeen");
+      localStorage.removeItem("classificationTourSeen");
+      localStorage.removeItem("currentQuestionForClassification");
       
       // Set up demo mode in localStorage
       localStorage.setItem("demoMode", "true");

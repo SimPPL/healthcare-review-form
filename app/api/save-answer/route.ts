@@ -7,7 +7,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { userId, questionId, userAnswer, isEdit = false } = body;
 
-    if (!userId || !questionId || !userAnswer) {
+    // Allow empty strings for userAnswer (needed for questions 6+)
+    if (!userId || !questionId || userAnswer === undefined || userAnswer === null) {
       return NextResponse.json(
         { error: "Missing required fields: userId, questionId, userAnswer" },
         { status: 400 },

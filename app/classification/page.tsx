@@ -4,7 +4,13 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Loader2, ArrowLeft, ArrowRight, HelpCircle } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { NextStep, useNextStep } from "nextstepjs";
@@ -23,6 +29,7 @@ export default function ClassificationPage() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
@@ -96,15 +103,20 @@ export default function ClassificationPage() {
         throw new Error("Question not found");
       }
 
+      // Get answer from localStorage (set by questions page before navigation)
+      const storedAnswer = localStorage.getItem(`answer_${questionId}`);
+
       const enhancedQuestion = {
         ...question,
-        user_answer: "",
-        status: "assigned" as const,
+        user_answer: storedAnswer !== null ? storedAnswer : "",
+        status: storedAnswer !== null ? ("answered" as const) : ("assigned" as const),
       };
 
-      localStorage.removeItem(`answer_${questionId}`);
-      localStorage.removeItem(`showAI_${questionId}`);
-      localStorage.removeItem(`classification_${questionId}`);
+      // Don't remove localStorage items in demo mode - they're needed for navigation
+      // Only remove classification status if starting fresh
+      if (!storedAnswer) {
+        localStorage.removeItem(`classification_${questionId}`);
+      }
 
       setCurrentQuestion(enhancedQuestion);
       setWordCounts({
@@ -141,9 +153,17 @@ export default function ClassificationPage() {
       const storedAnswer = localStorage.getItem(`answer_${questionId}`);
 
       const enhancedQuestion = { ...question };
-      if (!isDemoMode && storedAnswer && storedAnswer.trim()) {
-        enhancedQuestion.user_answer = storedAnswer.trim();
-        enhancedQuestion.status = "answered" as const;
+      // Prefer database value (source of truth), only use localStorage if DB doesn't have answer
+      if (!isDemoMode) {
+        if (question.user_answer !== undefined && question.user_answer !== null) {
+          // Database has answer (even if empty), use it - this is the source of truth
+          enhancedQuestion.user_answer = question.user_answer;
+          enhancedQuestion.status = "answered" as const;
+        } else if (storedAnswer !== null) {
+          // Database doesn't have answer, use localStorage if available
+          enhancedQuestion.user_answer = storedAnswer.trim();
+          enhancedQuestion.status = "answered" as const;
+        }
       }
 
       setCurrentQuestion(enhancedQuestion);
@@ -193,8 +213,9 @@ export default function ClassificationPage() {
 
     if (completedRubrics.length < 8) {
       setError(
-        `Please evaluate at least 8 Qualities. You have only completed ${completedRubrics.length}.`,
+        `Please evaluate at least 8 Qualities.\nYou have only completed ${completedRubrics.length}.`,
       );
+      setShowErrorDialog(true);
       return;
     }
 
@@ -206,6 +227,7 @@ export default function ClassificationPage() {
       setError(
         `Please select Yes/No for all evaluated qualities. Missing for: ${missingPassFail.join(", ")}`,
       );
+      setShowErrorDialog(true);
       return;
     }
 
@@ -268,6 +290,7 @@ export default function ClassificationPage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save data");
+      setShowErrorDialog(true);
     } finally {
       setIsSubmitting(false);
     }
@@ -328,11 +351,24 @@ export default function ClassificationPage() {
             </div>
           </div>
 
-          {error && (
-            <Alert variant="destructive" className="mb-8">
-              <AlertDescription className="text-base">{error}</AlertDescription>
-            </Alert>
-          )}
+          <Dialog
+            open={showErrorDialog}
+            onOpenChange={(open) => {
+              setShowErrorDialog(open);
+              if (!open) {
+                setError("");
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Cannot Proceed</DialogTitle>
+                <DialogDescription className="text-base pt-2 whitespace-pre-line">
+                  {error}
+                </DialogDescription>
+              </DialogHeader>
+            </DialogContent>
+          </Dialog>
 
           <div className="space-y-8">
             <div className="text-center">
@@ -559,7 +595,7 @@ export default function ClassificationPage() {
                 </>
               ) : (
                 <>
-                  {currentQuestionIndex < (isDemoMode ? 4 : 24)
+                  {currentQuestionIndex < (isDemoMode ? demoQuestionCount - 1 : 24)
                     ? "Next Question"
                     : "Complete Review"}
                   <ArrowRight className="ml-2 h-5 w-5" />

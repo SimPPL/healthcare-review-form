@@ -105,20 +105,30 @@ export default function QuestionsPage() {
         const currentQuestionData = questions[targetIndex];
         const questionId = currentQuestionData.question_id;
 
-        const dbAnswer = currentQuestionData.user_answer || "";
+        // Preserve empty strings from database (valid for questions 6+)
+        // Check if user_answer exists (not undefined/null) rather than using || which treats "" as falsy
+        const dbAnswer = currentQuestionData.user_answer !== undefined && currentQuestionData.user_answer !== null 
+          ? currentQuestionData.user_answer 
+          : "";
         const storedAnswer = localStorage.getItem(`answer_${questionId}`);
-        const finalAnswer = dbAnswer || storedAnswer || "";
+        // Prefer database answer if it exists (even if empty), otherwise use localStorage
+        const finalAnswer = currentQuestionData.user_answer !== undefined && currentQuestionData.user_answer !== null
+          ? currentQuestionData.user_answer
+          : (storedAnswer !== null ? storedAnswer : "");
 
         const storedShowAI =
           localStorage.getItem(`showAI_${questionId}`) === "true";
-        const shouldShowAI = dbAnswer ? true : storedShowAI;
+        // Show AI if database has answer (even if empty) or if localStorage flag is set
+        const shouldShowAI = (currentQuestionData.user_answer !== undefined && currentQuestionData.user_answer !== null) 
+          ? true 
+          : storedShowAI;
 
         setAnswer(finalAnswer);
         setEditedAnswer(finalAnswer);
         setShowAIResponse(shouldShowAI);
         setIsEditing(false);
         setIsSaving(false);
-        setWordCount(finalAnswer ? finalAnswer.trim().split(/\s+/).length : 0);
+        setWordCount(finalAnswer && finalAnswer.trim() !== "" ? finalAnswer.trim().split(/\s+/).length : 0);
 
         // Save the current index to localStorage for navigation
         localStorage.setItem("currentQuestionIndex", targetIndex.toString());
@@ -146,22 +156,19 @@ export default function QuestionsPage() {
             ? "classification_completed"
             : "assigned";
 
+        // Get answer from localStorage if it exists (preserves answers during navigation)
+        const storedAnswer = localStorage.getItem(`answer_${question.question_id}`);
+
         return {
           ...question,
-          user_answer: "",
+          user_answer: storedAnswer !== null ? storedAnswer : "",
           status: derivedStatus,
         };
       });
 
-      SAMPLE_QUESTIONS.forEach((question) => {
-        localStorage.removeItem(`answer_${question.question_id}`);
-        localStorage.removeItem(`showAI_${question.question_id}`);
-        localStorage.removeItem(`classification_${question.question_id}`);
-      });
-      localStorage.removeItem("questionsTourSeen");
-      localStorage.removeItem("questionsTourAISeen");
-      localStorage.removeItem("currentQuestionIndex");
-      localStorage.removeItem("currentQuestionForClassification");
+      // Don't remove any localStorage data here - it's needed for navigation
+      // The admin page handles clearing data on fresh login
+      // This function should only read and set up the questions array
 
       setQuestions(enhancedQuestions);
     } catch (err) {
@@ -212,12 +219,19 @@ export default function QuestionsPage() {
   };
 
   const confirmAnswer = async () => {
-    if (!userId || !currentQuestion || !answer.trim()) {
+    if (!userId || !currentQuestion) {
       setError("Please enter an answer before confirming.");
       return;
     }
-
+    
     const demoMode = localStorage.getItem("demoMode");
+    // In demo mode: after question 1 (index 1+), allow empty answers
+    // In normal mode: after question 5 (index 5+), allow empty answers
+    const minRequiredIndex = demoMode === "true" ? 1 : 5;
+    if (currentQuestionIndex < minRequiredIndex && !answer.trim()) {
+      setError("Please enter an answer before confirming.");
+      return;
+    }
     setIsSaving(true);
     setError("");
 
@@ -266,9 +280,13 @@ export default function QuestionsPage() {
   };
 
   const saveEdit = async () => {
-    if (!currentQuestion || !editedAnswer.trim()) return;
-
+    if (!currentQuestion) return;
+    
     const demoMode = localStorage.getItem("demoMode");
+    // In demo mode: after question 1 (index 1+), allow empty edits
+    // In normal mode: after question 5 (index 5+), allow empty edits
+    const minRequiredIndex = demoMode === "true" ? 1 : 5;
+    if (currentQuestionIndex < minRequiredIndex && !editedAnswer.trim()) return;
 
     try {
       // Skip API call in demo mode
@@ -318,22 +336,31 @@ export default function QuestionsPage() {
 
       if (nextQuestion) {
         // Load answer from database first, then fallback to localStorage
-        const dbAnswer = nextQuestion.user_answer || "";
+        // Preserve empty strings from database (valid for questions 6+)
+        const dbAnswer = nextQuestion.user_answer !== undefined && nextQuestion.user_answer !== null 
+          ? nextQuestion.user_answer 
+          : "";
         const storedAnswer = localStorage.getItem(
           `answer_${nextQuestion.question_id}`,
         );
-        const finalAnswer = dbAnswer || storedAnswer || "";
+        // Prefer database answer if it exists (even if empty), otherwise use localStorage
+        const finalAnswer = nextQuestion.user_answer !== undefined && nextQuestion.user_answer !== null
+          ? nextQuestion.user_answer
+          : (storedAnswer !== null ? storedAnswer : "");
 
         const storedShowAI =
           localStorage.getItem(`showAI_${nextQuestion.question_id}`) === "true";
-        const shouldShowAI = dbAnswer ? true : storedShowAI;
+        // Show AI if database has answer (even if empty) or if localStorage flag is set
+        const shouldShowAI = (nextQuestion.user_answer !== undefined && nextQuestion.user_answer !== null)
+          ? true
+          : storedShowAI;
 
         setAnswer(finalAnswer);
         setEditedAnswer(finalAnswer);
         setShowAIResponse(shouldShowAI);
         setIsEditing(false);
         setWordCount(
-          finalAnswer ? finalAnswer.trim().split(/\s+/).length : 0,
+          finalAnswer && finalAnswer.trim() !== "" ? finalAnswer.trim().split(/\s+/).length : 0,
         );
       }
       setError("");
@@ -346,12 +373,19 @@ export default function QuestionsPage() {
       return;
     }
 
-    if (!answer.trim()) {
+    const demoMode = localStorage.getItem("demoMode");
+    // In demo mode: after question 1 (index 1+), allow empty answers and skip confirmation
+    // In normal mode: after question 5 (index 5+), allow empty answers and skip confirmation
+    const minRequiredIndex = demoMode === "true" ? 1 : 5;
+    
+    if (currentQuestionIndex < minRequiredIndex && !answer.trim()) {
       setError("Please enter an answer before proceeding.");
       return;
     }
 
-    if (!showAIResponse) {
+    // For questions after minRequiredIndex, allow proceeding even without confirming (empty answers allowed)
+    // For questions before minRequiredIndex, require confirmation
+    if (currentQuestionIndex < minRequiredIndex && !showAIResponse) {
       setError(
         "Please confirm your answer first by clicking 'Confirm Answer'.",
       );
@@ -361,8 +395,6 @@ export default function QuestionsPage() {
     if (isSaving) {
       return;
     }
-
-    const demoMode = localStorage.getItem("demoMode");
     setIsSaving(true);
     setError("");
 
@@ -693,44 +725,72 @@ export default function QuestionsPage() {
                     </Button>
                   )}
 
-                  {!showAIResponse ? (
-                    <Button
-                      id="show-ai-button"
-                      onClick={confirmAnswer}
-                      disabled={!answer.trim() || isSaving}
-                      className="bg-[var(--color-purple-muted)] hover:bg-[var(--color-purple-muted-hover)] text-white px-8"
-                      size="lg"
-                    >
-                      {isSaving ? (
-                        <>
-                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        "Confirm Answer"
-                      )}
-                    </Button>
-                  ) : (
-                    <Button
-                      id="continue-button"
-                      onClick={proceedToClassification}
-                      disabled={!answer.trim() || isSaving}
-                      className="bg-[var(--color-purple-muted)] hover:bg-[var(--color-purple-muted-hover)] text-white px-8"
-                      size="lg"
-                    >
-                      {isSaving ? (
-                        <>
-                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        <>
-                          Next Page
-                          <ArrowRight className="ml-2 h-5 w-5" />
-                        </>
-                      )}
-                    </Button>
-                  )}
+                  {(() => {
+                    const demoMode = localStorage.getItem("demoMode");
+                    const minRequiredIndex = demoMode === "true" ? 1 : 5;
+                    return !showAIResponse ? (
+                      <>
+                        <Button
+                          id="show-ai-button"
+                          onClick={confirmAnswer}
+                          disabled={(currentQuestionIndex < minRequiredIndex && !answer.trim()) || isSaving}
+                          className="bg-[var(--color-purple-muted)] hover:bg-[var(--color-purple-muted-hover)] text-white px-8"
+                          size="lg"
+                        >
+                          {isSaving ? (
+                            <>
+                              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            "Confirm Answer"
+                          )}
+                        </Button>
+                        {/* For questions after minRequiredIndex, show "Next Page" button even without confirming */}
+                        {currentQuestionIndex >= minRequiredIndex && (
+                          <Button
+                            id="continue-button"
+                            onClick={proceedToClassification}
+                            disabled={isSaving}
+                            className="bg-[var(--color-purple-muted)] hover:bg-[var(--color-purple-muted-hover)] text-white px-8"
+                            size="lg"
+                          >
+                            {isSaving ? (
+                              <>
+                                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                Saving...
+                              </>
+                            ) : (
+                              <>
+                                Next Page
+                                <ArrowRight className="ml-2 h-5 w-5" />
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <Button
+                        id="continue-button"
+                        onClick={proceedToClassification}
+                        disabled={(currentQuestionIndex < minRequiredIndex && (!answer.trim() || !showAIResponse)) || isSaving}
+                        className="bg-[var(--color-purple-muted)] hover:bg-[var(--color-purple-muted-hover)] text-white px-8"
+                        size="lg"
+                      >
+                        {isSaving ? (
+                          <>
+                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            Next Page
+                            <ArrowRight className="ml-2 h-5 w-5" />
+                          </>
+                        )}
+                      </Button>
+                    );
+                  })()}
                 </div>
               </div>
             </>

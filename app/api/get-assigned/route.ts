@@ -96,11 +96,16 @@ export async function GET(request: NextRequest) {
         } catch (err) {
         }
 
+        // Preserve empty strings (valid for questions 6+)
+        // Check each field explicitly rather than using || which treats "" as falsy
         const userAnswer =
-          userRecord.edited_answer?.[questionId] ||
-          userRecord.unbiased_answer?.[questionId] ||
-          userRecord.answers?.[questionId]?.user_answer ||
-          "";
+          userRecord.edited_answer?.[questionId] !== undefined
+            ? userRecord.edited_answer[questionId]
+            : userRecord.unbiased_answer?.[questionId] !== undefined
+            ? userRecord.unbiased_answer[questionId]
+            : userRecord.answers?.[questionId]?.user_answer !== undefined
+            ? userRecord.answers[questionId].user_answer
+            : "";
 
         const selectedRubrics =
           userRecord.edited_rubrics?.[questionId] ||
