@@ -4,7 +4,12 @@ import {
   DATASET_TABLE,
   RESPONSES_TABLE,
 } from "@/lib/aws/dynamodb";
-import { ScanCommand, UpdateCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  ScanCommand,
+  QueryCommand,
+  UpdateCommand,
+  PutCommand,
+} from "@aws-sdk/lib-dynamodb";
 import { v4 as uuidv4 } from "uuid";
 import {
   Question,
@@ -13,7 +18,6 @@ import {
   UserResponseRecord,
 } from "@/types";
 
-// Mapping from profession dropdown values to domain values
 const PROFESSION_TO_DOMAIN_MAP: Record<string, string> = {
   "OB/GYN": "Gynecology & Maternal Health",
   "General Practitioner": "General Health & Primary Care",
@@ -21,7 +25,175 @@ const PROFESSION_TO_DOMAIN_MAP: Record<string, string> = {
   Physiotherapist: "Physical Therapy & Recovery",
 };
 
+const MAX_QUESTIONS_PER_USER = 25;
+const MAX_ASSIGNMENTS_PER_QUESTION = 2;
+
+async function lookupUserByEmail(email: string): Promise<any | null> {
+  const dynamoDb = getDynamoDbClient();
+
+  try {
+    const queryCommand = new QueryCommand({
+      TableName: RESPONSES_TABLE,
+      IndexName: "email-index",
+      KeyConditionExpression: "email = :email",
+      ExpressionAttributeValues: {
+        ":email": email,
+      },
+      Limit: 1,
+    });
+
+    const queryResult = await dynamoDb.send(queryCommand);
+
+    if (queryResult.Items && queryResult.Items.length > 0) {
+      return queryResult.Items[0];
+    }
+  } catch (error: any) {
+    if (
+      error.name === "ResourceNotFoundException" ||
+      error.code === "ResourceNotFoundException"
+    ) {
+      console.warn(
+        "email-index GSI not found, falling back to Scan for user lookup",
+      );
+    } else {
+      throw error;
+    }
+  }
+
+  const scanCommand = new ScanCommand({
+    TableName: RESPONSES_TABLE,
+    FilterExpression: "email = :email",
+    ExpressionAttributeValues: {
+      ":email": email,
+    },
+    Limit: 1,
+  });
+
+  const scanResult = await dynamoDb.send(scanCommand);
+
+  if (scanResult.Items && scanResult.Items.length > 0) {
+    if (scanResult.Items.length > 1) {
+      console.warn(
+        `Multiple users found with email ${email}, returning first match`,
+      );
+    }
+    return scanResult.Items[0];
+  }
+
+  return null;
+}
+
+async function checkAllDomainsForNeverAssigned(): Promise<boolean> {
+  try {
+    const dynamoDb = getDynamoDbClient();
+    const scanCommand = new ScanCommand({
+      TableName: DATASET_TABLE,
+      FilterExpression:
+        "(attribute_not_exists(assigned_count) OR assigned_count = :zero) AND (attribute_not_exists(times_answered) OR times_answered < target_evaluations)",
+      ExpressionAttributeValues: {
+        ":zero": 0,
+      },
+      Limit: 1,
+    });
+
+    const result = await dynamoDb.send(scanCommand);
+    return (result.Items?.length || 0) > 0;
+  } catch (error) {
+    console.error("Error checking all domains for never-assigned questions:", error);
+    return true;
+  }
+}
+
+async function fetchQuestions(
+  domain: string | null,
+  criteria: {
+    assignedCount?: number;
+    timesAnswered?: number;
+    excludeDomain?: string;
+    maxItems?: number;
+  },
+): Promise<Question[]> {
+  const dynamoDb = getDynamoDbClient();
+  const { assignedCount, timesAnswered, excludeDomain, maxItems } = criteria;
+
+  let filterExpression = "(attribute_not_exists(times_answered) OR times_answered < target_evaluations)";
+  const expressionAttributeNames: Record<string, string> = {};
+  const expressionAttributeValues: Record<string, any> = {};
+
+  if (assignedCount !== undefined) {
+    if (assignedCount === 0) {
+      filterExpression +=
+        " AND (attribute_not_exists(assigned_count) OR assigned_count = :zero)";
+      expressionAttributeValues[":zero"] = 0;
+    } else {
+      filterExpression += " AND (attribute_not_exists(assigned_count) OR assigned_count < :maxAssignments)";
+      expressionAttributeValues[":maxAssignments"] = MAX_ASSIGNMENTS_PER_QUESTION;
+    }
+  }
+
+  if (timesAnswered !== undefined) {
+    if (timesAnswered === 0) {
+      filterExpression += " AND (attribute_not_exists(times_answered) OR times_answered = :zeroAnswered)";
+      expressionAttributeValues[":zeroAnswered"] = 0;
+    }
+  }
+
+  if (domain) {
+    filterExpression += " AND #domain = :domain";
+    expressionAttributeNames["#domain"] = "domain";
+    expressionAttributeValues[":domain"] = domain;
+  } else if (excludeDomain) {
+    filterExpression += " AND (attribute_not_exists(#domain) OR #domain <> :excludeDomain)";
+    expressionAttributeNames["#domain"] = "domain";
+    expressionAttributeValues[":excludeDomain"] = excludeDomain;
+  }
+
+  const scanCommand = new ScanCommand({
+    TableName: DATASET_TABLE,
+    FilterExpression: filterExpression,
+    ExpressionAttributeNames:
+      Object.keys(expressionAttributeNames).length > 0
+        ? expressionAttributeNames
+        : undefined,
+    ExpressionAttributeValues: expressionAttributeValues,
+    ...(maxItems && { Limit: maxItems }),
+  });
+
+  const result = await dynamoDb.send(scanCommand);
+  return (result.Items || []) as Question[];
+}
+
+async function rollbackAssignments(
+  questionIds: string[],
+): Promise<void> {
+  const dynamoDb = getDynamoDbClient();
+
+  const rollbackPromises = questionIds.map((questionId) => {
+    const updateCommand = new UpdateCommand({
+      TableName: DATASET_TABLE,
+      Key: { question_id: questionId },
+      UpdateExpression: "SET assigned_count = if_not_exists(assigned_count, :zero) - :dec",
+      ConditionExpression: "if_not_exists(assigned_count, :zero) > :zero",
+      ExpressionAttributeValues: {
+        ":dec": 1,
+        ":zero": 0,
+      },
+    });
+
+    return dynamoDb.send(updateCommand).catch((error) => {
+      console.error(
+        `Failed to rollback assigned_count for question ${questionId}:`,
+        error,
+      );
+    });
+  });
+
+  await Promise.all(rollbackPromises);
+}
+
 export async function POST(request: NextRequest) {
+  const processedQuestionIds: string[] = [];
+
   try {
     let body;
     try {
@@ -55,26 +227,14 @@ export async function POST(request: NextRequest) {
     let existingUser = null;
 
     try {
-      const dynamoDb = getDynamoDbClient();
-      const queryCommand = new ScanCommand({
-        TableName: RESPONSES_TABLE,
-        FilterExpression: "email = :email",
-        ExpressionAttributeValues: {
-          ":email": email,
-        },
-      });
-      const queryResult = await dynamoDb.send(queryCommand);
-
-      if (queryResult.Items && queryResult.Items.length > 0) {
-        existingUser = queryResult.Items[0];
+      existingUser = await lookupUserByEmail(email);
+      if (existingUser) {
         userId = existingUser.user_id;
       }
     } catch (error) {
-      // Log error but continue - user lookup failure shouldn't block new user creation
-      console.warn("Failed to lookup existing user:", error);
+      console.error("Failed to lookup existing user:", error);
     }
 
-    // Get the domain for the selected profession
     const selectedDomain = PROFESSION_TO_DOMAIN_MAP[profession];
     if (!selectedDomain) {
       return NextResponse.json(
@@ -83,248 +243,161 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let scanResult;
-    try {
-      const dynamoDb = getDynamoDbClient();
-      const scanCommand = new ScanCommand({
-        TableName: DATASET_TABLE,
-        FilterExpression:
-          "(attribute_not_exists(times_answered) OR times_answered < target_evaluations) AND #domain = :domain",
-        ExpressionAttributeNames: {
-          "#domain": "domain",
-        },
-        ExpressionAttributeValues: {
-          ":domain": selectedDomain,
-        },
-      });
-      scanResult = await dynamoDb.send(scanCommand);
-    } catch (error) {
-      return NextResponse.json(
-        {
-          error: `Database connection failed: ${error instanceof Error ? error.message : String(error)}. Please check your AWS configuration.`,
-          details: {
-            table: DATASET_TABLE,
-            region: process.env.AWS_REGION || "Not explicitly set",
-            environment: process.env.NODE_ENV,
-            errorDetails: error instanceof Error ? error.stack : String(error),
-            timestamp: new Date().toISOString(),
-          },
-        },
-        { status: 500 },
-      );
-    }
-
-    const availableQuestions: Question[] = (scanResult.Items ||
-      []) as Question[];
-
-    // Separate questions by assigned_count to prevent duplicates until all are assigned
-    // 1. Questions that have never been assigned (assigned_count = 0 or null)
-    // 2. Questions that have been assigned at least once (assigned_count > 0)
-    const neverAssignedQuestions = availableQuestions.filter(
-      (q) => (q.assigned_count || 0) === 0,
-    );
-    const alreadyAssignedQuestions = availableQuestions.filter(
-      (q) => (q.assigned_count || 0) > 0,
-    );
-
-    // Check if all questions have been assigned at least once
-    const allQuestionsAssigned = neverAssignedQuestions.length === 0;
+    const hasNeverAssignedQuestions =
+      await checkAllDomainsForNeverAssigned();
 
     let uniqueQuestions: Question[] = [];
     const seenQuestionIds = new Set<string>();
 
-    if (!allQuestionsAssigned) {
-      // Phase 1: Assign only never-assigned questions until all are assigned
-      // Sort by question_id for consistent ordering
-      const sortedNeverAssigned = neverAssignedQuestions.sort((a, b) =>
-        a.question_id.localeCompare(b.question_id),
-      );
+    if (hasNeverAssignedQuestions) {
+      const selectedDomainQuestions = await fetchQuestions(selectedDomain, {
+        assignedCount: 0,
+        maxItems: MAX_QUESTIONS_PER_USER,
+      });
 
-      // Get up to 25 unique never-assigned questions from selected domain
-      for (const question of sortedNeverAssigned) {
-        if (!seenQuestionIds.has(question.question_id)) {
+      const sortedSelected = selectedDomainQuestions
+        .filter((q) => q.question_id && q.question_text)
+        .sort((a, b) => (a.question_id || "").localeCompare(b.question_id || ""));
+
+      for (const question of sortedSelected) {
+        if (question.question_id && !seenQuestionIds.has(question.question_id)) {
           seenQuestionIds.add(question.question_id);
           uniqueQuestions.push(question);
-          if (uniqueQuestions.length >= 25) break;
+          if (uniqueQuestions.length >= MAX_QUESTIONS_PER_USER) break;
         }
       }
 
-      // Fallback: If we don't have enough questions from selected domain,
-      // fetch never-assigned questions from other domains
-      if (uniqueQuestions.length < 25) {
-        try {
-          const dynamoDb = getDynamoDbClient();
-          const fallbackScanCommand = new ScanCommand({
-            TableName: DATASET_TABLE,
-            FilterExpression:
-              "(attribute_not_exists(assigned_count) OR assigned_count = :zero) AND (attribute_not_exists(times_answered) OR times_answered < target_evaluations) AND #domain <> :domain",
-            ExpressionAttributeNames: {
-              "#domain": "domain",
-            },
-            ExpressionAttributeValues: {
-              ":domain": selectedDomain,
-              ":zero": 0,
-            },
-          });
-          const fallbackScanResult = await dynamoDb.send(fallbackScanCommand);
-          const fallbackQuestions: Question[] = (fallbackScanResult.Items ||
-            []) as Question[];
+      if (uniqueQuestions.length < MAX_QUESTIONS_PER_USER) {
+        const otherDomainsQuestions = await fetchQuestions(null, {
+          assignedCount: 0,
+          excludeDomain: selectedDomain,
+          maxItems: MAX_QUESTIONS_PER_USER * 2,
+        });
 
-          // Randomly shuffle and pick from other domains to fill remaining slots
-          const shuffledFallback = [...fallbackQuestions].sort(
-            () => Math.random() - 0.5,
-          );
-          const remainingSlots = 25 - uniqueQuestions.length;
+        const shuffled = [...otherDomainsQuestions].sort(
+          () => Math.random() - 0.5,
+        );
 
-          for (const question of shuffledFallback) {
-            if (
-              !seenQuestionIds.has(question.question_id) &&
-              (question.assigned_count || 0) === 0
-            ) {
-              seenQuestionIds.add(question.question_id);
-              uniqueQuestions.push(question);
-              if (uniqueQuestions.length >= 25) break;
-            }
+        const remainingSlots =
+          MAX_QUESTIONS_PER_USER - uniqueQuestions.length;
+        for (const question of shuffled) {
+          if (
+            question.question_id &&
+            !seenQuestionIds.has(question.question_id) &&
+            (question.assigned_count || 0) === 0
+          ) {
+            seenQuestionIds.add(question.question_id);
+            uniqueQuestions.push(question);
+            if (uniqueQuestions.length >= MAX_QUESTIONS_PER_USER) break;
           }
-        } catch (error) {
-          console.warn(
-            "Failed to fetch fallback questions from other domains:",
-            error,
-          );
-          // Continue with what we have - don't fail the request
         }
       }
     } else {
-      // Phase 2: All questions have been assigned at least once, now allow repeats
-      // Separate by times_answered for prioritization
-      const unansweredQuestions = availableQuestions.filter(
-        (q) => (q.times_answered || 0) === 0,
-      );
-      const partiallyAnsweredQuestions = availableQuestions.filter(
-        (q) => (q.times_answered || 0) > 0,
-      );
+      const unansweredSelected = await fetchQuestions(selectedDomain, {
+        assignedCount: 1,
+        timesAnswered: 0,
+        maxItems: MAX_QUESTIONS_PER_USER,
+      });
 
-      // Step 1: First assign unanswered questions from selected domain
-      const sortedUnansweredQuestions = unansweredQuestions.sort((a, b) =>
-        a.question_id.localeCompare(b.question_id),
-      );
+      const sortedUnanswered = unansweredSelected
+        .filter((q) => q.question_id && (q.assigned_count || 0) < MAX_ASSIGNMENTS_PER_QUESTION)
+        .sort((a, b) => (a.question_id || "").localeCompare(b.question_id || ""));
 
-      for (const question of sortedUnansweredQuestions) {
-        if (!seenQuestionIds.has(question.question_id)) {
+      for (const question of sortedUnanswered) {
+        if (question.question_id && !seenQuestionIds.has(question.question_id)) {
           seenQuestionIds.add(question.question_id);
           uniqueQuestions.push(question);
-          if (uniqueQuestions.length >= 25) break;
+          if (uniqueQuestions.length >= MAX_QUESTIONS_PER_USER) break;
         }
       }
 
-      // Step 2: If still need more, fetch unanswered questions from other domains
-      if (uniqueQuestions.length < 25) {
-        try {
-          const dynamoDb = getDynamoDbClient();
-          const fallbackScanCommand = new ScanCommand({
-            TableName: DATASET_TABLE,
-            FilterExpression:
-              "(attribute_not_exists(times_answered) OR times_answered = :zero) AND (attribute_not_exists(times_answered) OR times_answered < target_evaluations) AND #domain <> :domain",
-            ExpressionAttributeNames: {
-              "#domain": "domain",
-            },
-            ExpressionAttributeValues: {
-              ":domain": selectedDomain,
-              ":zero": 0,
-            },
-          });
-          const fallbackScanResult = await dynamoDb.send(fallbackScanCommand);
-          const fallbackQuestions: Question[] = (fallbackScanResult.Items ||
-            []) as Question[];
+      if (uniqueQuestions.length < MAX_QUESTIONS_PER_USER) {
+        const unansweredOther = await fetchQuestions(null, {
+          assignedCount: 1,
+          timesAnswered: 0,
+          excludeDomain: selectedDomain,
+          maxItems: MAX_QUESTIONS_PER_USER * 2,
+        });
 
-          // Only get unanswered questions (times_answered = 0) from other domains
-          const unansweredFallback = fallbackQuestions.filter(
-            (q) => (q.times_answered || 0) === 0,
-          );
-
-          // Shuffle for variety
-          const shuffledUnanswered = [...unansweredFallback].sort(
-            () => Math.random() - 0.5,
-          );
-
-          const remainingSlots = 25 - uniqueQuestions.length;
-          for (const question of shuffledUnanswered) {
-            if (!seenQuestionIds.has(question.question_id)) {
-              seenQuestionIds.add(question.question_id);
-              uniqueQuestions.push(question);
-              if (uniqueQuestions.length >= 25) break;
-            }
-          }
-        } catch (error) {
-          console.warn(
-            "Failed to fetch fallback unanswered questions from other domains:",
-            error,
-          );
-          // Continue with what we have - don't fail the request
-        }
-      }
-
-      // Step 3: If still need more, assign partially answered questions from selected domain
-      if (uniqueQuestions.length < 25) {
-        const remainingSlots = 25 - uniqueQuestions.length;
-
-        // Shuffle partially answered questions for variety
-        const shuffledPartiallyAnswered = [...partiallyAnsweredQuestions]
-          .filter((q) => !seenQuestionIds.has(q.question_id))
-          .sort(() => Math.random() - 0.5)
-          .slice(0, remainingSlots);
-
-        // Add to seenQuestionIds to prevent future duplicates
-        shuffledPartiallyAnswered.forEach((q) =>
-          seenQuestionIds.add(q.question_id),
+        const filtered = unansweredOther.filter(
+          (q) =>
+            q.question_id &&
+            !seenQuestionIds.has(q.question_id) &&
+            (q.assigned_count || 0) < MAX_ASSIGNMENTS_PER_QUESTION,
         );
-        uniqueQuestions = [...uniqueQuestions, ...shuffledPartiallyAnswered];
+
+        const shuffled = [...filtered].sort(() => Math.random() - 0.5);
+        const remainingSlots =
+          MAX_QUESTIONS_PER_USER - uniqueQuestions.length;
+
+        for (const question of shuffled) {
+          if (question.question_id) {
+            seenQuestionIds.add(question.question_id);
+            uniqueQuestions.push(question);
+            if (uniqueQuestions.length >= MAX_QUESTIONS_PER_USER) break;
+          }
+        }
       }
 
-      // Step 4: If still need more, fetch partially answered questions from other domains
-      if (uniqueQuestions.length < 25) {
-        try {
-          const dynamoDb = getDynamoDbClient();
-          const fallbackScanCommand = new ScanCommand({
-            TableName: DATASET_TABLE,
-            FilterExpression:
-              "(attribute_not_exists(times_answered) OR times_answered < target_evaluations) AND #domain <> :domain",
-            ExpressionAttributeNames: {
-              "#domain": "domain",
-            },
-            ExpressionAttributeValues: {
-              ":domain": selectedDomain,
-            },
-          });
-          const fallbackScanResult = await dynamoDb.send(fallbackScanCommand);
-          const fallbackQuestions: Question[] = (fallbackScanResult.Items ||
-            []) as Question[];
+      if (uniqueQuestions.length < MAX_QUESTIONS_PER_USER) {
+        const partiallyAnsweredSelected = await fetchQuestions(
+          selectedDomain,
+          {
+            assignedCount: 1,
+            maxItems: MAX_QUESTIONS_PER_USER * 2,
+          },
+        );
 
-          // Get partially answered questions from other domains
-          const partiallyAnsweredFallback = fallbackQuestions.filter(
-            (q) => (q.times_answered || 0) > 0,
-          );
+        const filtered = partiallyAnsweredSelected.filter(
+          (q) =>
+            q.question_id &&
+            !seenQuestionIds.has(q.question_id) &&
+            (q.assigned_count || 0) < MAX_ASSIGNMENTS_PER_QUESTION &&
+            (q.times_answered || 0) > 0,
+        );
 
-          // Shuffle for variety and sort by times_answered (ascending) to prioritize questions that need more evaluations
-          const shuffledPartiallyAnswered = [...partiallyAnsweredFallback]
-            .filter((q) => !seenQuestionIds.has(q.question_id))
-            .sort((a, b) => (a.times_answered || 0) - (b.times_answered || 0))
-            .sort(() => Math.random() - 0.5);
+        const shuffled = [...filtered]
+          .sort((a, b) => (a.times_answered || 0) - (b.times_answered || 0))
+          .sort(() => Math.random() - 0.5);
 
-          const remainingSlots = 25 - uniqueQuestions.length;
-          for (const question of shuffledPartiallyAnswered) {
-            if (!seenQuestionIds.has(question.question_id)) {
-              seenQuestionIds.add(question.question_id);
-              uniqueQuestions.push(question);
-              if (uniqueQuestions.length >= 25) break;
-            }
+        const remainingSlots =
+          MAX_QUESTIONS_PER_USER - uniqueQuestions.length;
+        for (const question of shuffled.slice(0, remainingSlots)) {
+          if (question.question_id) {
+            seenQuestionIds.add(question.question_id);
+            uniqueQuestions.push(question);
+            if (uniqueQuestions.length >= MAX_QUESTIONS_PER_USER) break;
           }
-        } catch (error) {
-          console.warn(
-            "Failed to fetch fallback partially answered questions from other domains:",
-            error,
-          );
-          // Continue with what we have - don't fail the request
+        }
+      }
+
+      if (uniqueQuestions.length < MAX_QUESTIONS_PER_USER) {
+        const partiallyAnsweredOther = await fetchQuestions(null, {
+          assignedCount: 1,
+          excludeDomain: selectedDomain,
+          maxItems: MAX_QUESTIONS_PER_USER * 2,
+        });
+
+        const filtered = partiallyAnsweredOther.filter(
+          (q) =>
+            q.question_id &&
+            !seenQuestionIds.has(q.question_id) &&
+            (q.assigned_count || 0) < MAX_ASSIGNMENTS_PER_QUESTION &&
+            (q.times_answered || 0) > 0,
+        );
+
+        const shuffled = [...filtered]
+          .sort((a, b) => (a.times_answered || 0) - (b.times_answered || 0))
+          .sort(() => Math.random() - 0.5);
+
+        const remainingSlots =
+          MAX_QUESTIONS_PER_USER - uniqueQuestions.length;
+        for (const question of shuffled.slice(0, remainingSlots)) {
+          if (question.question_id) {
+            seenQuestionIds.add(question.question_id);
+            uniqueQuestions.push(question);
+            if (uniqueQuestions.length >= MAX_QUESTIONS_PER_USER) break;
+          }
         }
       }
     }
@@ -332,21 +405,16 @@ export async function POST(request: NextRequest) {
     if (uniqueQuestions.length === 0) {
       return NextResponse.json(
         {
-          error: "No questions available for evaluation in this domain.",
+          error: "No questions available for assignment at this time.",
         },
         { status: 404 },
       );
     }
 
-    const assignedQuestions: Question[] = [];
-    const processedQuestionIds: string[] = [];
-
-    // Check existing user limits early
     if (existingUser) {
       const existingQuestionsAssigned = existingUser.questions_assigned || [];
-      const maxQuestions = existingUser.max_questions_assigned || 25;
+      const maxQuestions = existingUser.max_questions_assigned || MAX_QUESTIONS_PER_USER;
 
-      // Check if user already has max questions assigned
       if (existingQuestionsAssigned.length >= maxQuestions) {
         return NextResponse.json({
           userId,
@@ -357,19 +425,20 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Filter out questions that the user already has assigned
-      const existingQuestionsSet = new Set(existingQuestionsAssigned);
+      const validExistingQuestions = existingQuestionsAssigned.filter(
+        (id: any) => id && typeof id === "string"
+      );
+      const existingQuestionsSet = new Set(validExistingQuestions);
       uniqueQuestions = uniqueQuestions.filter(
-        (q) => !existingQuestionsSet.has(q.question_id)
+        (q) => q.question_id && !existingQuestionsSet.has(q.question_id),
       );
 
-      // Calculate how many more questions we can assign
       const remainingSlots = maxQuestions - existingQuestionsAssigned.length;
       uniqueQuestions = uniqueQuestions.slice(0, remainingSlots);
     }
 
-    // Track processed questions to prevent duplicates
     const processedQuestionIdsSet = new Set<string>();
+    const failedQuestionIds: string[] = [];
 
     for (const question of uniqueQuestions) {
       if (
@@ -380,43 +449,62 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Increment assigned_count when question is assigned
-      // This prevents duplicate assignments until all questions are assigned at least once
       try {
+        const dynamoDb = getDynamoDbClient();
         const updateCommand = new UpdateCommand({
           TableName: DATASET_TABLE,
           Key: { question_id: question.question_id },
           UpdateExpression:
             "SET assigned_count = if_not_exists(assigned_count, :zero) + :inc",
+          ConditionExpression:
+            "(attribute_not_exists(assigned_count) OR assigned_count < :maxAssignments)",
           ExpressionAttributeValues: {
             ":inc": 1,
             ":zero": 0,
+            ":maxAssignments": MAX_ASSIGNMENTS_PER_QUESTION,
           },
         });
 
-        const dynamoDb = getDynamoDbClient();
         await dynamoDb.send(updateCommand);
-        
-        // Only add to processed list if update was successful
+
         processedQuestionIdsSet.add(question.question_id);
         processedQuestionIds.push(question.question_id);
-      } catch (error) {
-        console.error(`Failed to update assigned_count for question ${question.question_id}:`, error);
-        // Continue processing other questions even if one fails
+      } catch (error: any) {
+        if (
+          error.name === "ConditionalCheckFailedException" ||
+          error.code === "ConditionalCheckFailedException"
+        ) {
+          console.warn(
+            `Question ${question.question_id} already at max assignments, skipping`,
+          );
+        } else {
+          console.error(
+            `Failed to update assigned_count for question ${question.question_id}:`,
+            error,
+          );
+          failedQuestionIds.push(question.question_id);
+        }
       }
     }
 
-    // Only include questions that were successfully processed (assigned_count updated)
-    const questionsMap: Record<string, QuestionAssignment> = {};
-    for (const question of uniqueQuestions) {
-      if (
-        !question.question_id ||
-        !question.question_text ||
-        !processedQuestionIdsSet.has(question.question_id)
-      ) {
-        continue;
-      }
+    const successfullyProcessedQuestions = uniqueQuestions.filter((q) =>
+      q.question_id && q.question_text && processedQuestionIdsSet.has(q.question_id),
+    );
 
+    if (successfullyProcessedQuestions.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "No questions could be successfully assigned. All available questions may have reached maximum assignments.",
+        },
+        { status: 409 },
+      );
+    }
+
+    const questionsMap: Record<string, QuestionAssignment> = {};
+    const assignedQuestions: Question[] = [];
+
+    for (const question of successfullyProcessedQuestions) {
       questionsMap[question.question_id] = {
         question_text: question.question_text,
         llm_response: question.llm_response || question.answer || "",
@@ -428,53 +516,51 @@ export async function POST(request: NextRequest) {
         question_id: question.question_id,
         question_text: question.question_text,
         llm_response: question.llm_response || question.answer || "",
+        domain: question.domain,
+        target_evaluations: question.target_evaluations,
       });
     }
 
-    if (Object.keys(questionsMap).length > 0) {
+    try {
       if (existingUser) {
-        try {
-          const newQuestionIds = Object.keys(questionsMap);
-          const existingQuestionsAssigned =
-            existingUser.questions_assigned || [];
+        const newQuestionIds = Object.keys(questionsMap);
+        const existingQuestionsAssigned =
+          existingUser.questions_assigned || [];
+        const existingQuestions = existingUser.questions || {};
+        const existingStatus = existingUser.status || {};
 
-          const updatedQuestionsAssigned = [
-            ...new Set([...existingQuestionsAssigned, ...newQuestionIds]),
-          ];
+        const updatedQuestionsAssigned = [
+          ...new Set([
+            ...existingQuestionsAssigned.filter((id: string) => id && typeof id === "string"),
+            ...newQuestionIds,
+          ]),
+        ];
 
-          const newStatuses = Object.fromEntries(
-            newQuestionIds.map((id) => [id, "assigned" as const]),
-          );
+        const newStatuses = Object.fromEntries(
+          newQuestionIds.map((id) => [id, "assigned" as const]),
+        );
 
-          const updateCommand = new UpdateCommand({
-            TableName: RESPONSES_TABLE,
-            Key: { user_id: userId },
-            UpdateExpression:
-              "SET questions = :questions, questions_assigned = :questionsAssigned, #s = :status, updated_at = :updatedAt, user_name = :userName, medical_profession = :profession, max_questions_assigned = if_not_exists(max_questions_assigned, :defaultMax)",
-            ExpressionAttributeNames: {
-              "#s": "status",
-            },
-            ExpressionAttributeValues: {
-              ":questions": { ...(existingUser.questions || {}), ...questionsMap },
-              ":questionsAssigned": updatedQuestionsAssigned,
-              ":status": { ...(existingUser.status || {}), ...newStatuses },
-              ":updatedAt": new Date().toISOString(),
-              ":userName": name,
-              ":profession": profession,
-              ":defaultMax": 25,
-            },
-          });
+        const dynamoDb = getDynamoDbClient();
+        const updateCommand = new UpdateCommand({
+          TableName: RESPONSES_TABLE,
+          Key: { user_id: userId },
+          UpdateExpression:
+            "SET questions = :questions, questions_assigned = :questionsAssigned, #s = :status, updated_at = :updatedAt, user_name = :userName, medical_profession = :profession, max_questions_assigned = if_not_exists(max_questions_assigned, :defaultMax)",
+          ExpressionAttributeNames: {
+            "#s": "status",
+          },
+          ExpressionAttributeValues: {
+            ":questions": { ...existingQuestions, ...questionsMap },
+            ":questionsAssigned": updatedQuestionsAssigned,
+            ":status": { ...existingStatus, ...newStatuses },
+            ":updatedAt": new Date().toISOString(),
+            ":userName": name,
+            ":profession": profession,
+            ":defaultMax": MAX_QUESTIONS_PER_USER,
+          },
+        });
 
-          const dynamoDb = getDynamoDbClient();
-          await dynamoDb.send(updateCommand);
-        } catch (error) {
-          return NextResponse.json(
-            {
-              error: "Failed to update user record. Please try again.",
-            },
-            { status: 500 },
-          );
-        }
+        await dynamoDb.send(updateCommand);
       } else {
         const questionIds = Object.keys(questionsMap);
         const userResponseItem: UserResponseRecord = {
@@ -488,7 +574,7 @@ export async function POST(request: NextRequest) {
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           questions_assigned: questionIds,
-          max_questions_assigned: 25,
+          max_questions_assigned: MAX_QUESTIONS_PER_USER,
           questions_answered: 0,
           unbiased_answer: {},
           edited_answer: {},
@@ -502,44 +588,51 @@ export async function POST(request: NextRequest) {
           questions: questionsMap,
         };
 
-        try {
-          const putCommand = new PutCommand({
-            TableName: RESPONSES_TABLE,
-            Item: userResponseItem,
-          });
+        const dynamoDb = getDynamoDbClient();
+        const putCommand = new PutCommand({
+          TableName: RESPONSES_TABLE,
+          Item: userResponseItem,
+        });
 
-          const dynamoDb = getDynamoDbClient();
-          await dynamoDb.send(putCommand);
-        } catch (error) {
-          return NextResponse.json(
-            {
-              error: "Failed to create user record. Please try again.",
-            },
-            { status: 500 },
-          );
-        }
+        await dynamoDb.send(putCommand);
       }
-    }
+    } catch (error) {
+      console.error("Failed to update user record, rolling back assignments:", error);
+      await rollbackAssignments(processedQuestionIds);
 
-    if (assignedQuestions.length === 0) {
       return NextResponse.json(
         {
-          error:
-            "No questions could be successfully assigned. Please try again.",
+          error: "Failed to save assignment. Please try again.",
         },
         { status: 500 },
       );
     }
 
+    const isPartialAssignment =
+      successfullyProcessedQuestions.length < MAX_QUESTIONS_PER_USER &&
+      !existingUser;
+
     return NextResponse.json({
       userId,
-      assignedQuestions: assignedQuestions.length,
+      assignedQuestions: successfullyProcessedQuestions.length,
+      questions: assignedQuestions,
       message: existingUser
-        ? `Welcome back! Added ${assignedQuestions.length} new questions to your existing set.`
-        : `Successfully assigned ${assignedQuestions.length} questions`,
+        ? `Welcome back! Added ${successfullyProcessedQuestions.length} new question${successfullyProcessedQuestions.length !== 1 ? "s" : ""} to your existing set.`
+        : isPartialAssignment
+          ? `Assigned ${successfullyProcessedQuestions.length} question${successfullyProcessedQuestions.length !== 1 ? "s" : ""} (fewer than the maximum of ${MAX_QUESTIONS_PER_USER} due to limited availability).`
+          : `Successfully assigned ${successfullyProcessedQuestions.length} question${successfullyProcessedQuestions.length !== 1 ? "s" : ""}.`,
       isReturningUser: !!existingUser,
+      isPartialAssignment,
+      failedQuestions: failedQuestionIds.length > 0 ? failedQuestionIds.length : undefined,
     });
   } catch (error) {
+    if (processedQuestionIds.length > 0) {
+      console.error("Unexpected error, rolling back assignments:", error);
+      await rollbackAssignments(processedQuestionIds).catch((rollbackError) => {
+        console.error("Failed to rollback assignments:", rollbackError);
+      });
+    }
+
     const missingVars = [];
     if (!process.env.DATASET_TABLE && process.env.NODE_ENV === "development")
       missingVars.push("DATASET_TABLE");
