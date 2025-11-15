@@ -94,6 +94,7 @@ async function checkAllDomainsForNeverAssigned(): Promise<boolean> {
         ":zero": 0,
       },
       Limit: 1,
+      ProjectionExpression: "question_id",
     });
 
     const result = await dynamoDb.send(scanCommand);
@@ -456,15 +457,20 @@ export async function POST(request: NextRequest) {
           Key: { question_id: question.question_id },
           UpdateExpression:
             "SET assigned_count = if_not_exists(assigned_count, :zero) + :inc",
-          ConditionExpression:
-            "(attribute_not_exists(assigned_count) OR assigned_count < :maxAssignments)",
-          ExpressionAttributeValues: {
-            ":inc": 1,
-            ":zero": 0,
-            ":maxAssignments": MAX_ASSIGNMENTS_PER_QUESTION,
-          },
+          ConditionExpression: hasNeverAssignedQuestions
+            ? "(attribute_not_exists(assigned_count) OR assigned_count = :zero)"
+            : "(attribute_not_exists(assigned_count) OR assigned_count < :maxAssignments)",
+          ExpressionAttributeValues: hasNeverAssignedQuestions
+            ? {
+                ":inc": 1,
+                ":zero": 0,
+              }
+            : {
+                ":inc": 1,
+                ":zero": 0,
+                ":maxAssignments": MAX_ASSIGNMENTS_PER_QUESTION,
+              },
         });
-
         await dynamoDb.send(updateCommand);
 
         processedQuestionIdsSet.add(question.question_id);
