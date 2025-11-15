@@ -86,19 +86,30 @@ async function lookupUserByEmail(email: string): Promise<any | null> {
 async function checkAllDomainsForNeverAssigned(): Promise<boolean> {
   try {
     const dynamoDb = getDynamoDbClient();
-    const scanCommand = new ScanCommand({
-      TableName: DATASET_TABLE,
-      FilterExpression:
-        "(attribute_not_exists(assigned_count) OR assigned_count = :zero) AND (attribute_not_exists(times_answered) OR times_answered < target_evaluations)",
-      ExpressionAttributeValues: {
-        ":zero": 0,
-      },
-      Limit: 1,
-      ProjectionExpression: "question_id",
-    });
+    let lastEvaluatedKey: any = undefined;
 
-    const result = await dynamoDb.send(scanCommand);
-    return (result.Items?.length || 0) > 0;
+    do {
+      const scanCommand = new ScanCommand({
+        TableName: DATASET_TABLE,
+        FilterExpression:
+          "(attribute_not_exists(assigned_count) OR assigned_count = :zero) AND (attribute_not_exists(times_answered) OR times_answered < :maxTimesAnswered)",
+        ExpressionAttributeValues: {
+          ":zero": 0,
+          ":maxTimesAnswered": 1,
+        },
+        Limit: 1,
+        ProjectionExpression: "question_id",
+        ExclusiveStartKey: lastEvaluatedKey,
+      });
+
+      const result = await dynamoDb.send(scanCommand);
+      if (result.Items && result.Items.length > 0) {
+        return true;
+      }
+      lastEvaluatedKey = result.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+
+    return false;
   } catch (error) {
     console.error("Error checking all domains for never-assigned questions:", error);
     return true;
@@ -117,9 +128,11 @@ async function fetchQuestions(
   const dynamoDb = getDynamoDbClient();
   const { assignedCount, timesAnswered, excludeDomain, maxItems } = criteria;
 
-  let filterExpression = "(attribute_not_exists(times_answered) OR times_answered < target_evaluations)";
+  let filterExpression = "(attribute_not_exists(times_answered) OR times_answered < :maxTimesAnswered)";
   const expressionAttributeNames: Record<string, string> = {};
-  const expressionAttributeValues: Record<string, any> = {};
+  const expressionAttributeValues: Record<string, any> = {
+    ":maxTimesAnswered": 1,
+  };
 
   if (assignedCount !== undefined) {
     if (assignedCount === 0) {
@@ -149,19 +162,34 @@ async function fetchQuestions(
     expressionAttributeValues[":excludeDomain"] = excludeDomain;
   }
 
-  const scanCommand = new ScanCommand({
-    TableName: DATASET_TABLE,
-    FilterExpression: filterExpression,
-    ExpressionAttributeNames:
-      Object.keys(expressionAttributeNames).length > 0
-        ? expressionAttributeNames
-        : undefined,
-    ExpressionAttributeValues: expressionAttributeValues,
-    ...(maxItems && { Limit: maxItems }),
-  });
+  const allItems: Question[] = [];
+  let lastEvaluatedKey: any = undefined;
 
-  const result = await dynamoDb.send(scanCommand);
-  return (result.Items || []) as Question[];
+  do {
+    const scanCommand = new ScanCommand({
+      TableName: DATASET_TABLE,
+      FilterExpression: filterExpression,
+      ExpressionAttributeNames:
+        Object.keys(expressionAttributeNames).length > 0
+          ? expressionAttributeNames
+          : undefined,
+      ExpressionAttributeValues: expressionAttributeValues,
+      ExclusiveStartKey: lastEvaluatedKey,
+      Limit: 1000,
+    });
+
+    const result = await dynamoDb.send(scanCommand);
+    if (result.Items) {
+      allItems.push(...(result.Items as Question[]));
+    }
+    lastEvaluatedKey = result.LastEvaluatedKey;
+
+    if (maxItems && allItems.length >= maxItems) {
+      break;
+    }
+  } while (lastEvaluatedKey);
+
+  return maxItems ? allItems.slice(0, maxItems) : allItems;
 }
 
 async function rollbackAssignments(
@@ -229,11 +257,29 @@ export async function POST(request: NextRequest) {
 
     try {
       existingUser = await lookupUserByEmail(email);
-      if (existingUser) {
+      if (existingUser && existingUser.user_id) {
         userId = existingUser.user_id;
+      } else if (existingUser && !existingUser.user_id) {
+        console.warn(`User found for email ${email} but missing user_id, treating as new user`);
+        existingUser = null;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to lookup existing user:", error);
+      if (
+        error.name === "UnrecognizedClientException" ||
+        error.name === "InvalidSignatureException" ||
+        error.code === "CredentialsError" ||
+        error.message?.includes("credentials") ||
+        error.message?.includes("AccessDenied")
+      ) {
+        return NextResponse.json(
+          {
+            error: "Database connection error. Please check server configuration.",
+            details: "AWS credentials or permissions issue",
+          },
+          { status: 500 },
+        );
+      }
     }
 
     const selectedDomain = PROFESSION_TO_DOMAIN_MAP[profession];
@@ -244,20 +290,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const hasNeverAssignedQuestions =
-      await checkAllDomainsForNeverAssigned();
+    let hasNeverAssignedQuestions = false;
+    try {
+      hasNeverAssignedQuestions = await checkAllDomainsForNeverAssigned();
+    } catch (error) {
+      console.error("Error checking for never-assigned questions:", error);
+      return NextResponse.json(
+        {
+          error: "Failed to check question availability. Please try again.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        },
+        { status: 500 },
+      );
+    }
 
     let uniqueQuestions: Question[] = [];
     const seenQuestionIds = new Set<string>();
 
     if (hasNeverAssignedQuestions) {
-      const selectedDomainQuestions = await fetchQuestions(selectedDomain, {
-        assignedCount: 0,
-        maxItems: MAX_QUESTIONS_PER_USER,
-      });
+      let selectedDomainQuestions: Question[] = [];
+      try {
+        selectedDomainQuestions = await fetchQuestions(selectedDomain, {
+          assignedCount: 0,
+          maxItems: MAX_QUESTIONS_PER_USER,
+        });
+      } catch (error) {
+        console.error("Error fetching selected domain questions:", error);
+        return NextResponse.json(
+          {
+            error: "Failed to fetch questions. Please try again.",
+            details: error instanceof Error ? error.message : "Unknown error",
+          },
+          { status: 500 },
+        );
+      }
 
       const sortedSelected = selectedDomainQuestions
-        .filter((q) => q.question_id && q.question_text)
+        .filter((q) => q.question_id && q.question_text && (q.times_answered || 0) < 1)
         .sort((a, b) => (a.question_id || "").localeCompare(b.question_id || ""));
 
       for (const question of sortedSelected) {
@@ -269,11 +338,16 @@ export async function POST(request: NextRequest) {
       }
 
       if (uniqueQuestions.length < MAX_QUESTIONS_PER_USER) {
-        const otherDomainsQuestions = await fetchQuestions(null, {
-          assignedCount: 0,
-          excludeDomain: selectedDomain,
-          maxItems: MAX_QUESTIONS_PER_USER * 2,
-        });
+        let otherDomainsQuestions: Question[] = [];
+        try {
+          otherDomainsQuestions = await fetchQuestions(null, {
+            assignedCount: 0,
+            excludeDomain: selectedDomain,
+            maxItems: MAX_QUESTIONS_PER_USER * 2,
+          });
+        } catch (error) {
+          console.error("Error fetching other domains questions:", error);
+        }
 
         const shuffled = [...otherDomainsQuestions].sort(
           () => Math.random() - 0.5,
@@ -285,7 +359,8 @@ export async function POST(request: NextRequest) {
           if (
             question.question_id &&
             !seenQuestionIds.has(question.question_id) &&
-            (question.assigned_count || 0) === 0
+            (question.assigned_count || 0) === 0 &&
+            (question.times_answered || 0) < 1
           ) {
             seenQuestionIds.add(question.question_id);
             uniqueQuestions.push(question);
@@ -294,14 +369,26 @@ export async function POST(request: NextRequest) {
         }
       }
     } else {
-      const unansweredSelected = await fetchQuestions(selectedDomain, {
-        assignedCount: 1,
-        timesAnswered: 0,
-        maxItems: MAX_QUESTIONS_PER_USER,
-      });
+      let unansweredSelected: Question[] = [];
+      try {
+        unansweredSelected = await fetchQuestions(selectedDomain, {
+          assignedCount: 1,
+          timesAnswered: 0,
+          maxItems: MAX_QUESTIONS_PER_USER,
+        });
+      } catch (error) {
+        console.error("Error fetching unanswered selected questions:", error);
+        return NextResponse.json(
+          {
+            error: "Failed to fetch questions. Please try again.",
+            details: error instanceof Error ? error.message : "Unknown error",
+          },
+          { status: 500 },
+        );
+      }
 
       const sortedUnanswered = unansweredSelected
-        .filter((q) => q.question_id && (q.assigned_count || 0) < MAX_ASSIGNMENTS_PER_QUESTION)
+        .filter((q) => q.question_id && (q.assigned_count || 0) < MAX_ASSIGNMENTS_PER_QUESTION && (q.times_answered || 0) < 1)
         .sort((a, b) => (a.question_id || "").localeCompare(b.question_id || ""));
 
       for (const question of sortedUnanswered) {
@@ -313,18 +400,24 @@ export async function POST(request: NextRequest) {
       }
 
       if (uniqueQuestions.length < MAX_QUESTIONS_PER_USER) {
-        const unansweredOther = await fetchQuestions(null, {
-          assignedCount: 1,
-          timesAnswered: 0,
-          excludeDomain: selectedDomain,
-          maxItems: MAX_QUESTIONS_PER_USER * 2,
-        });
+        let unansweredOther: Question[] = [];
+        try {
+          unansweredOther = await fetchQuestions(null, {
+            assignedCount: 1,
+            timesAnswered: 0,
+            excludeDomain: selectedDomain,
+            maxItems: MAX_QUESTIONS_PER_USER * 2,
+          });
+        } catch (error) {
+          console.error("Error fetching unanswered other questions:", error);
+        }
 
         const filtered = unansweredOther.filter(
           (q) =>
             q.question_id &&
             !seenQuestionIds.has(q.question_id) &&
-            (q.assigned_count || 0) < MAX_ASSIGNMENTS_PER_QUESTION,
+            (q.assigned_count || 0) < MAX_ASSIGNMENTS_PER_QUESTION &&
+            (q.times_answered || 0) < 1,
         );
 
         const shuffled = [...filtered].sort(() => Math.random() - 0.5);
@@ -332,7 +425,10 @@ export async function POST(request: NextRequest) {
           MAX_QUESTIONS_PER_USER - uniqueQuestions.length;
 
         for (const question of shuffled) {
-          if (question.question_id) {
+          if (
+            question.question_id &&
+            (question.times_answered || 0) < 1
+          ) {
             seenQuestionIds.add(question.question_id);
             uniqueQuestions.push(question);
             if (uniqueQuestions.length >= MAX_QUESTIONS_PER_USER) break;
@@ -340,67 +436,6 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      if (uniqueQuestions.length < MAX_QUESTIONS_PER_USER) {
-        const partiallyAnsweredSelected = await fetchQuestions(
-          selectedDomain,
-          {
-            assignedCount: 1,
-            maxItems: MAX_QUESTIONS_PER_USER * 2,
-          },
-        );
-
-        const filtered = partiallyAnsweredSelected.filter(
-          (q) =>
-            q.question_id &&
-            !seenQuestionIds.has(q.question_id) &&
-            (q.assigned_count || 0) < MAX_ASSIGNMENTS_PER_QUESTION &&
-            (q.times_answered || 0) > 0,
-        );
-
-        const shuffled = [...filtered]
-          .sort((a, b) => (a.times_answered || 0) - (b.times_answered || 0))
-          .sort(() => Math.random() - 0.5);
-
-        const remainingSlots =
-          MAX_QUESTIONS_PER_USER - uniqueQuestions.length;
-        for (const question of shuffled.slice(0, remainingSlots)) {
-          if (question.question_id) {
-            seenQuestionIds.add(question.question_id);
-            uniqueQuestions.push(question);
-            if (uniqueQuestions.length >= MAX_QUESTIONS_PER_USER) break;
-          }
-        }
-      }
-
-      if (uniqueQuestions.length < MAX_QUESTIONS_PER_USER) {
-        const partiallyAnsweredOther = await fetchQuestions(null, {
-          assignedCount: 1,
-          excludeDomain: selectedDomain,
-          maxItems: MAX_QUESTIONS_PER_USER * 2,
-        });
-
-        const filtered = partiallyAnsweredOther.filter(
-          (q) =>
-            q.question_id &&
-            !seenQuestionIds.has(q.question_id) &&
-            (q.assigned_count || 0) < MAX_ASSIGNMENTS_PER_QUESTION &&
-            (q.times_answered || 0) > 0,
-        );
-
-        const shuffled = [...filtered]
-          .sort((a, b) => (a.times_answered || 0) - (b.times_answered || 0))
-          .sort(() => Math.random() - 0.5);
-
-        const remainingSlots =
-          MAX_QUESTIONS_PER_USER - uniqueQuestions.length;
-        for (const question of shuffled.slice(0, remainingSlots)) {
-          if (question.question_id) {
-            seenQuestionIds.add(question.question_id);
-            uniqueQuestions.push(question);
-            if (uniqueQuestions.length >= MAX_QUESTIONS_PER_USER) break;
-          }
-        }
-      }
     }
 
     if (uniqueQuestions.length === 0) {
@@ -436,6 +471,16 @@ export async function POST(request: NextRequest) {
 
       const remainingSlots = maxQuestions - existingQuestionsAssigned.length;
       uniqueQuestions = uniqueQuestions.slice(0, remainingSlots);
+
+      if (uniqueQuestions.length === 0) {
+        return NextResponse.json({
+          userId,
+          assignedQuestions: existingQuestionsAssigned.length,
+          message: "All available questions matching your criteria have already been assigned to you.",
+          isReturningUser: true,
+          reachedLimit: false,
+        });
+      }
     }
 
     const processedQuestionIdsSet = new Set<string>();
@@ -450,6 +495,10 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
+      if ((question.times_answered || 0) >= 1) {
+        continue;
+      }
+
       try {
         const dynamoDb = getDynamoDbClient();
         const updateCommand = new UpdateCommand({
@@ -458,17 +507,19 @@ export async function POST(request: NextRequest) {
           UpdateExpression:
             "SET assigned_count = if_not_exists(assigned_count, :zero) + :inc",
           ConditionExpression: hasNeverAssignedQuestions
-            ? "(attribute_not_exists(assigned_count) OR assigned_count = :zero)"
-            : "(attribute_not_exists(assigned_count) OR assigned_count < :maxAssignments)",
+            ? "(attribute_not_exists(assigned_count) OR assigned_count = :zero) AND (attribute_not_exists(times_answered) OR times_answered < :maxTimesAnswered)"
+            : "(attribute_not_exists(assigned_count) OR assigned_count < :maxAssignments) AND (attribute_not_exists(times_answered) OR times_answered < :maxTimesAnswered)",
           ExpressionAttributeValues: hasNeverAssignedQuestions
             ? {
                 ":inc": 1,
                 ":zero": 0,
+                ":maxTimesAnswered": 1,
               }
             : {
                 ":inc": 1,
                 ":zero": 0,
                 ":maxAssignments": MAX_ASSIGNMENTS_PER_QUESTION,
+                ":maxTimesAnswered": 1,
               },
         });
         await dynamoDb.send(updateCommand);
