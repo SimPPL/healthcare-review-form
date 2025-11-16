@@ -68,16 +68,67 @@ export async function GET(request: NextRequest) {
           );
 
           if (datasetResult.Item?.rubrics) {
-            // Handle both string and array formats for rubrics
-            if (typeof datasetResult.Item.rubrics === 'string') {
+            const rawRubrics = datasetResult.Item.rubrics;
+
+            // Handle multiple possible storage formats for rubrics:
+            // 1. JSON string of string[]:
+            //    '["rubric 1", "rubric 2"]'
+            // 2. JSON string of [{ "S": "rubric 1" }, ...] (Dynamo-style JSON)
+            // 3. Array of strings
+            // 4. Array of { S: string }
+            if (typeof rawRubrics === "string") {
               try {
-                rubrics = JSON.parse(datasetResult.Item.rubrics);
+                const parsed = JSON.parse(rawRubrics);
+                if (Array.isArray(parsed)) {
+                  if (
+                    parsed.length > 0 &&
+                    typeof parsed[0] === "object" &&
+                    parsed[0] !== null &&
+                    "S" in (parsed[0] as any)
+                  ) {
+                    // Format: [{ S: "..." }, ...]
+                    rubrics = (parsed as any[])
+                      .map((item) =>
+                        item && typeof item.S === "string" ? item.S.trim() : "",
+                      )
+                      .filter((v) => v.length > 0);
+                  } else {
+                    // Format: ["...", "..."]
+                    rubrics = (parsed as any[])
+                      .filter(
+                        (item) => typeof item === "string" && item.trim().length > 0,
+                      )
+                      .map((item) => (item as string).trim());
+                  }
+                } else if (typeof parsed === "string" && parsed.trim().length > 0) {
+                  rubrics = [parsed.trim()];
+                }
               } catch {
                 // If parsing fails, treat as a single rubric string
-                rubrics = [datasetResult.Item.rubrics];
+                if (rawRubrics.trim().length > 0) {
+                  rubrics = [rawRubrics.trim()];
+                }
               }
-            } else if (Array.isArray(datasetResult.Item.rubrics)) {
-              rubrics = datasetResult.Item.rubrics;
+            } else if (Array.isArray(rawRubrics)) {
+              // Handle direct arrays coming from Dynamo: either string[] or { S: string }[]
+              if (
+                rawRubrics.length > 0 &&
+                typeof rawRubrics[0] === "object" &&
+                rawRubrics[0] !== null &&
+                "S" in (rawRubrics[0] as any)
+              ) {
+                rubrics = (rawRubrics as any[])
+                  .map((item) =>
+                    item && typeof item.S === "string" ? item.S.trim() : "",
+                  )
+                  .filter((v) => v.length > 0);
+              } else {
+                rubrics = (rawRubrics as any[])
+                  .filter(
+                    (item) => typeof item === "string" && item.trim().length > 0,
+                  )
+                  .map((item) => (item as string).trim());
+              }
             }
           }
 
