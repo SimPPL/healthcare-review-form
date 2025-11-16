@@ -140,8 +140,13 @@ async function fetchQuestions(
         " AND (attribute_not_exists(assigned_count) OR assigned_count = :zero)";
       expressionAttributeValues[":zero"] = 0;
     } else {
-      filterExpression += " AND (attribute_not_exists(assigned_count) OR assigned_count < :maxAssignments)";
-      expressionAttributeValues[":maxAssignments"] = MAX_ASSIGNMENTS_PER_QUESTION;
+      // For assignedCount > 0, we now explicitly filter for questions
+      // whose assigned_count is exactly this value. This makes the
+      // "0s first, then 1s" strategy precise and easier to reason about:
+      // - Phase 1: assignedCount = 0  -> only never-assigned questions
+      // - Phase 2: assignedCount = 1  -> only once-assigned questions
+      filterExpression += " AND assigned_count = :assignedCount";
+      expressionAttributeValues[":assignedCount"] = assignedCount;
     }
   }
 
