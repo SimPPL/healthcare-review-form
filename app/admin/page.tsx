@@ -31,18 +31,17 @@ export default function AdminPage() {
     if (password === "admin") {
       setIsLoading(true);
       
-      // Clear all previous demo data to ensure fresh start
-      SAMPLE_QUESTIONS.forEach((question) => {
-        localStorage.removeItem(`answer_${question.question_id}`);
-        localStorage.removeItem(`showAI_${question.question_id}`);
-        localStorage.removeItem(`classification_${question.question_id}`);
-      });
-      localStorage.removeItem("questionsTourSeen");
-      localStorage.removeItem("questionsTourAISeen");
-      localStorage.removeItem("classificationTourSeen");
-      localStorage.removeItem("currentQuestionForClassification");
+      // Clear ALL localStorage data to ensure completely fresh start
+      localStorage.clear();
       
-      // Set up demo mode in localStorage
+      // Also clear sessionStorage if any exists
+      try {
+        sessionStorage.clear();
+      } catch (err) {
+        // Ignore if sessionStorage is not available
+      }
+      
+      // Set up demo mode in localStorage with fresh data
       localStorage.setItem("demoMode", "true");
       localStorage.setItem("userId", "admin-demo-user");
       localStorage.setItem("userName", "Admin Demo User");

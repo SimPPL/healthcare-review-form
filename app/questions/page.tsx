@@ -608,44 +608,48 @@ export default function QuestionsPage() {
                             {wordCount} words
                           </span>
                         </div>
-                        <div className="relative">
-                          <Textarea
-                            id="answer-textarea"
-                            value={isEditing ? editedAnswer : answer}
-                            onChange={(e) => handleAnswerChange(e.target.value)}
-                            disabled={!isEditing}
-                            className={`min-h-[120px] sm:min-h-[160px] text-sm resize-y ${
-                              isEditing
-                                ? "bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-[var(--color-purple-muted-border)]"
-                                : "bg-gray-50 dark:bg-gray-800"
-                            }`}
-                          />
-                          {!isEditing && (
-                            <Button
-                              onClick={startEditing}
-                              size="sm"
-                              variant="outline"
-                              className="absolute top-2 right-2"
-                            >
-                              <Pencil className="h-3 w-3 mr-1" />
-                              Edit
-                            </Button>
-                          )}
+                        <div className="space-y-2">
+                          <div className="relative">
+                            <Textarea
+                              id="answer-textarea"
+                              value={isEditing ? editedAnswer : answer}
+                              onChange={(e) => handleAnswerChange(e.target.value)}
+                              disabled={!isEditing}
+                              className={`min-h-[120px] sm:min-h-[160px] text-sm resize-y ${
+                                isEditing
+                                  ? "bg-white dark:bg-zinc-900 focus:ring-2 focus:ring-[var(--color-purple-muted-border)]"
+                                  : "bg-gray-50 dark:bg-gray-800"
+                              }`}
+                            />
+                            {!isEditing && (
+                              <Button
+                                onClick={startEditing}
+                                size="sm"
+                                variant="outline"
+                                className="absolute top-2 right-2"
+                              >
+                                <Pencil className="h-3 w-3 mr-1" />
+                                Edit
+                              </Button>
+                            )}
+                          </div>
                           {isEditing && (
-                            <div className="absolute top-2 right-2 flex gap-1">
+                            <div className="flex justify-end gap-2">
                               <Button
                                 onClick={saveEdit}
                                 size="sm"
                                 variant="outline"
                               >
-                                <Check className="h-3 w-3" />
+                                <Check className="h-3 w-3 mr-1" />
+                                Save
                               </Button>
                               <Button
                                 onClick={cancelEdit}
                                 size="sm"
                                 variant="outline"
                               >
-                                <X className="h-3 w-3" />
+                                <X className="h-3 w-3 mr-1" />
+                                Cancel
                               </Button>
                             </div>
                           )}
